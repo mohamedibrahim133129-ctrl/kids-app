@@ -1,19 +1,23 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import {
   Beaker,
   BookOpen,
   Calculator,
   CheckCircle2,
+  ClipboardCheck,
   Ear,
   FlaskConical,
   GraduationCap,
+  Layers,
   Palette,
+  Play,
   RefreshCw,
   Shapes,
   Sparkles,
   Volume2,
 } from 'lucide-react';
+import { DeepLessonEngine, DeepLessonTarget } from '../components/academy/DeepLessonEngine';
 import { TracingPad } from '../components/academy/TracingPad';
 import { NonoCharacter } from '../components/NonoCharacter';
 import { useNonoLand } from '../context/NonoLandContext';
@@ -26,8 +30,9 @@ import {
   NUMBER_TIERS,
   PARENT_OFFLINE_ACTIVITIES,
 } from '../data/academyData';
+import { AGE_CURRICULUM_OUTCOMES, MATH_DEEP_UNITS } from '../data/deepCurriculum';
 import { AGE_GROUP_META, formatNumber, t } from '../i18n/translations';
-import { NonoMood } from '../types/nonoland';
+import { CmsLessonRecord, NonoMood } from '../types/nonoland';
 import { soundEngine } from '../utils/soundEngine';
 
 type AcademyTab = 'daily' | 'arabic' | 'english' | 'numbers' | 'colors-shapes';
@@ -36,6 +41,28 @@ export const AcademyScreen: React.FC = () => {
   const { activeChild, language, recordConceptInteraction, navigate } = useNonoLand();
   const [tab, setTab] = useState<AcademyTab>('daily');
   const [nonoMood, setNonoMood] = useState<NonoMood>('idle');
+  const [deepTarget, setDeepTarget] = useState<DeepLessonTarget | null>(null);
+  const [cmsLessons, setCmsLessons] = useState<CmsLessonRecord[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/cms/content')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!cancelled && data && Array.isArray(data.lessons)) {
+          setCmsLessons(
+            data.lessons.filter(
+              (ls: CmsLessonRecord) =>
+                ls.published && ls.ageGroups.includes(activeChild.ageGroup),
+            ),
+          );
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [activeChild.ageGroup]);
 
   // Arabic Alphabet state
   const [arIndex, setArIndex] = useState(0);
@@ -171,6 +198,18 @@ export const AcademyScreen: React.FC = () => {
     }
   };
 
+  const ageCurriculum = AGE_CURRICULUM_OUTCOMES[activeChild.ageGroup];
+  const completedDeepCount = (activeChild.completedDeepLessons || []).length;
+
+  if (deepTarget) {
+    return (
+      <DeepLessonEngine
+        target={deepTarget}
+        onExit={() => setDeepTarget(null)}
+      />
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -231,6 +270,145 @@ export const AcademyScreen: React.FC = () => {
       ========================================= */}
       {tab === 'daily' && (
         <div className="space-y-5">
+          {/* Smart Age-Adapted Curriculum Overview */}
+          <div className="nono-card rounded-3xl p-5 sm:p-6 bg-gradient-to-br from-[#F3E8FF]/60 via-white to-[#E5F6FF]/60 border-2 border-[#8054D9]/15 space-y-4">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <span className="text-xs font-extrabold text-[#8054D9]">
+                  {t(ageCurriculum.guidanceStyle, language)}
+                </span>
+                <h2 className="text-xl sm:text-2xl font-extrabold text-[#27345C] mt-1">
+                  {t(ageCurriculum.title, language)}
+                </h2>
+                <p className="text-xs sm:text-sm text-[#27345C]/75 mt-1">
+                  {t(ageCurriculum.expectedOutcome, language)}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <span className="px-3 py-1.5 rounded-xl bg-white border border-[#27345C]/12 text-xs font-extrabold text-[#27345C] tabular-nums">
+                  {formatNumber(completedDeepCount, language)}{' '}
+                  {language === 'ar' ? 'رحلة عميقة مكتملة' : 'Deep Lessons Done'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => navigate('exams')}
+                  className="nono-btn-tactile px-4 py-2 rounded-xl bg-[#FF9360] text-white text-xs sm:text-sm font-extrabold flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
+                >
+                  <ClipboardCheck className="w-4 h-4" />
+                  <span>{language === 'ar' ? 'امتحانات نونو (٤٠ سؤالاً)' : 'Official Exams (40 Q)'}</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+              {ageCurriculum.focusAreas.map((area, idx) => (
+                <div
+                  key={idx}
+                  className="p-3 rounded-2xl bg-white border border-[#27345C]/10 text-xs font-bold text-[#27345C] flex items-start gap-2"
+                >
+                  <CheckCircle2 className="w-4 h-4 text-[#55D98B] shrink-0 mt-0.5" />
+                  <span>{t(area, language)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Featured Deep Multi-Stage Concept Journeys (9-11 Stages Each) */}
+          <div className="nono-card rounded-3xl p-6 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-xl font-extrabold text-[#27345C] flex items-center gap-2">
+                  <Layers className="w-5 h-5 text-[#8054D9]" />
+                  <span>
+                    {language === 'ar'
+                      ? 'رحلات التعلّم العميق الكاملة (٩ – ١١ مرحلة لكل مفهوم)'
+                      : 'Complete Deep Concept Journeys (9–11 Stages Each)'}
+                  </span>
+                </h2>
+                <p className="text-xs text-[#27345C]/70 mt-0.5">
+                  {language === 'ar'
+                    ? 'تقديم، شرح، أمثلة واقعية، استماع، تمييز بصري، فرز، تلوين أو كتابة، ذاكرة، وتقييم مستقل!'
+                    : 'Intro, explanation, real-world examples, audio, recognition, sorting, coloring/tracing, memory & independent assessment.'}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <button
+                type="button"
+                onClick={() => setDeepTarget({ type: 'color', colorId: 'red' })}
+                className="p-4 rounded-2xl bg-gradient-to-br from-[#FF4D6D]/15 to-white border-2 border-[#FF4D6D]/30 hover:border-[#FF4D6D] text-start space-y-2 cursor-pointer transition-all"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-2xl">🍎🍓🎈</span>
+                  <span className="text-[11px] font-extrabold text-[#FF4D6D]">10 {language === 'ar' ? 'مراحل' : 'Stages'}</span>
+                </div>
+                <p className="font-extrabold text-sm text-[#27345C]">
+                  {language === 'ar' ? 'رحلة اكتشاف اللون الأحمر' : 'Discover the Color Red'}
+                </p>
+                <p className="text-[11px] text-[#27345C]/70">
+                  {language === 'ar' ? 'تلوين، فرز سلال، ذاكرة واختبار مستقل' : 'Coloring, basket sorting, memory & quiz'}
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDeepTarget({ type: 'arabic', letterId: 'ar-alif' })}
+                className="p-4 rounded-2xl bg-gradient-to-br from-[#8054D9]/15 to-white border-2 border-[#8054D9]/30 hover:border-[#8054D9] text-start space-y-2 cursor-pointer transition-all"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-2xl font-extrabold text-[#8054D9]">أ</span>
+                  <span className="text-[11px] font-extrabold text-[#8054D9]">11 {language === 'ar' ? 'مرحلة' : 'Stages'}</span>
+                </div>
+                <p className="font-extrabold text-sm text-[#27345C]">
+                  {language === 'ar' ? 'رحلة اكتشاف حرف الألف — أ' : 'Arabic Letter Alif (أ) Journey'}
+                </p>
+                <p className="text-[11px] text-[#27345C]/70">
+                  {language === 'ar' ? 'الأشكال الأربعة، كتابة، بناء كلمة وقراءة' : 'Forms, tracing, word building & reading'}
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDeepTarget({ type: 'english', letterId: currentEn.id })}
+                className="p-4 rounded-2xl bg-gradient-to-br from-[#39BDF2]/15 to-white border-2 border-[#39BDF2]/30 hover:border-[#39BDF2] text-start space-y-2 cursor-pointer transition-all"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-2xl font-extrabold text-[#39BDF2]">{currentEn.upper}{currentEn.lower}</span>
+                  <span className="text-[11px] font-extrabold text-[#39BDF2]">11 {language === 'ar' ? 'مرحلة' : 'Stages'}</span>
+                </div>
+                <p className="font-extrabold text-sm text-[#27345C]">
+                  {language === 'ar' ? `رحلة الحرف الإنجليزي ${currentEn.upper}` : `Letter ${currentEn.upper} Full Journey`}
+                </p>
+                <p className="text-[11px] text-[#27345C]/70">
+                  {language === 'ar' ? 'الاسم والصوت الصوتي، تتبع و CVC' : 'Name vs phonics, tracing & CVC words'}
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const unit =
+                    MATH_DEEP_UNITS.find((u) => u.ageGroups.includes(activeChild.ageGroup)) ||
+                    MATH_DEEP_UNITS[0];
+                  setDeepTarget({ type: 'math', unitId: unit.id });
+                }}
+                className="p-4 rounded-2xl bg-gradient-to-br from-[#FF9360]/15 to-white border-2 border-[#FF9360]/30 hover:border-[#FF9360] text-start space-y-2 cursor-pointer transition-all"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-2xl">🧮</span>
+                  <span className="text-[11px] font-extrabold text-[#FF9360]">6 {language === 'ar' ? 'مراحل' : 'Stages'}</span>
+                </div>
+                <p className="font-extrabold text-sm text-[#27345C]">
+                  {language === 'ar' ? 'رحلة الرياضيات المناسبة لعمرك' : 'Age-Matched Math Unit'}
+                </p>
+                <p className="text-[11px] text-[#27345C]/70">
+                  {language === 'ar' ? 'كميات حقيقية، عمليات ومسألة حياتية' : 'Real quantities, operations & word problem'}
+                </p>
+              </button>
+            </div>
+          </div>
+
           <div className="nono-card rounded-3xl p-6 space-y-4">
             <h2 className="text-xl font-extrabold text-[#27345C]">
               {language === 'ar'
@@ -359,6 +537,81 @@ export const AcademyScreen: React.FC = () => {
               </p>
             )}
           </div>
+
+          {/* Admin CMS Published Custom Lessons */}
+          {cmsLessons.length > 0 && (
+            <div className="nono-card rounded-3xl p-6 space-y-4">
+              <h3 className="text-lg font-extrabold text-[#27345C] flex items-center gap-2">
+                <BookOpen className="w-5 h-5 text-[#55D98B]" />
+                <span>{language === 'ar' ? 'دروس إضافية من مناهج نونو لاند' : 'Additional Published Lessons'}</span>
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {cmsLessons.map((ls) => (
+                  <div
+                    key={ls.id}
+                    className="p-4 rounded-2xl bg-[#FFF8E9] border border-[#27345C]/12 space-y-2.5"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <span className="text-[11px] font-extrabold text-[#8054D9] uppercase">
+                          {ls.domain}
+                        </span>
+                        <h4 className="font-extrabold text-base text-[#27345C]">
+                          {ls.targetSymbol ? `${ls.targetSymbol} · ` : ''}{t(ls.title, language)}
+                        </h4>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (ls.audioUrl) {
+                            new Audio(ls.audioUrl).play().catch(() => {
+                              soundEngine.speak(`${t(ls.title, language)}. ${t(ls.summary, language)}`, language);
+                            });
+                          } else {
+                            soundEngine.speak(`${t(ls.title, language)}. ${t(ls.summary, language)}`, language);
+                          }
+                          recordConceptInteraction({
+                            conceptId: `cms-${ls.id}`,
+                            domain: ls.domain,
+                            label: ls.title,
+                            stage: 'exposed',
+                            isCorrect: true,
+                          });
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-white border border-[#27345C]/15 text-xs font-bold flex items-center gap-1 cursor-pointer shrink-0"
+                      >
+                        <Volume2 className="w-3.5 h-3.5 text-[#8054D9]" />
+                        <span>{language === 'ar' ? 'استمع' : 'Listen'}</span>
+                      </button>
+                    </div>
+                    {ls.imageUrl && (
+                      <img
+                        src={ls.imageUrl}
+                        alt={t(ls.title, language)}
+                        className="w-full h-36 object-cover rounded-xl border border-[#27345C]/10"
+                        referrerPolicy="no-referrer"
+                      />
+                    )}
+                    <p className="text-xs text-[#27345C]/80 leading-relaxed">
+                      {t(ls.summary, language)}
+                    </p>
+                    {ls.examples.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {ls.examples.map((ex, i) => (
+                          <span
+                            key={i}
+                            className="px-2.5 py-1 rounded-lg bg-white border border-[#27345C]/10 text-xs font-bold text-[#27345C]"
+                          >
+                            {ex.visual ? `${ex.visual} ` : ''}{t(ex.label, language)}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -429,12 +682,24 @@ export const AcademyScreen: React.FC = () => {
                 </div>
               </div>
 
-              {/* Audio Controls: Normal + Slow */}
+              {/* Audio Controls + 11-Stage Deep Journey Launch */}
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
+                  onClick={() => setDeepTarget({ type: 'arabic', letterId: currentAr.id })}
+                  className="nono-btn-tactile px-4 py-2.5 rounded-xl bg-[#FF9360] text-white text-xs sm:text-sm font-extrabold flex items-center gap-2 cursor-pointer"
+                >
+                  <Play className="w-4 h-4 fill-white" />
+                  <span>
+                    {language === 'ar'
+                      ? `ابدأ رحلة الـ١١ مرحلة الكاملة لحرف (${currentAr.char})`
+                      : `Start 11-Stage Journey (${currentAr.char})`}
+                  </span>
+                </button>
+                <button
+                  type="button"
                   onClick={() => speakSlowOrNormal(`${currentAr.nameAr}، ${currentAr.word}`, 'ar', false)}
-                  className="nono-btn-tactile px-4 py-2.5 rounded-xl bg-[#8054D9] text-white text-xs sm:text-sm font-bold flex items-center gap-2 cursor-pointer"
+                  className="px-4 py-2.5 rounded-xl bg-[#8054D9] text-white text-xs sm:text-sm font-bold flex items-center gap-2 cursor-pointer"
                 >
                   <Volume2 className="w-4 h-4" />
                   <span>{language === 'ar' ? 'استمع للنطق' : 'Hear Pronunciation'}</span>
@@ -602,8 +867,20 @@ export const AcademyScreen: React.FC = () => {
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
+                  onClick={() => setDeepTarget({ type: 'english', letterId: currentEn.id })}
+                  className="nono-btn-tactile px-4 py-2.5 rounded-xl bg-[#8054D9] text-white text-xs font-extrabold flex items-center gap-2 cursor-pointer"
+                >
+                  <Play className="w-4 h-4 fill-white" />
+                  <span>
+                    {language === 'ar'
+                      ? `رحلة الـ١١ مرحلة لحرف (${currentEn.upper})`
+                      : `Start 11-Stage Journey (${currentEn.upper})`}
+                  </span>
+                </button>
+                <button
+                  type="button"
                   onClick={() => speakSlowOrNormal(`${currentEn.upper}. ${currentEn.word}`, 'en', false)}
-                  className="nono-btn-tactile px-4 py-2.5 rounded-xl bg-[#39BDF2] text-white text-xs font-bold flex items-center gap-2 cursor-pointer"
+                  className="px-4 py-2.5 rounded-xl bg-[#39BDF2] text-white text-xs font-bold flex items-center gap-2 cursor-pointer"
                 >
                   <Volume2 className="w-4 h-4" />
                   <span>{language === 'ar' ? 'استمع بالصوت الإنجليزي' : 'Hear Letter & Word'}</span>
@@ -778,6 +1055,61 @@ export const AcademyScreen: React.FC = () => {
       ========================================= */}
       {tab === 'numbers' && (
         <div className="space-y-5">
+          {/* Deep Multi-Stage Math Units tailored by Age */}
+          <div className="nono-card rounded-3xl p-5 sm:p-6 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-lg font-extrabold text-[#27345C]">
+                {language === 'ar' ? 'وحدات الرياضيات العميقة (٦ مراحل لكل وحدة)' : 'Deep Interactive Math Units (6 Stages Each)'}
+              </h2>
+              <button
+                type="button"
+                onClick={() => navigate('exams')}
+                className="px-3.5 py-2 rounded-xl bg-[#8054D9] text-white text-xs font-extrabold flex items-center gap-1.5 cursor-pointer"
+              >
+                <ClipboardCheck className="w-3.5 h-3.5" />
+                <span>{language === 'ar' ? 'امتحان الرياضيات (٤٠ سؤالاً)' : 'Math Official Exam'}</span>
+              </button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {MATH_DEEP_UNITS.map((unit) => {
+                const ageMatch = unit.ageGroups.includes(activeChild.ageGroup);
+                const done = (activeChild.completedDeepLessons || []).includes(unit.id);
+                return (
+                  <button
+                    key={unit.id}
+                    type="button"
+                    onClick={() => setDeepTarget({ type: 'math', unitId: unit.id })}
+                    className={`p-4 rounded-2xl border-2 text-start space-y-1.5 cursor-pointer transition-all ${
+                      ageMatch
+                        ? 'bg-[#FFF3D1]/60 border-[#FF9360]/50 hover:border-[#FF9360]'
+                        : 'bg-white border-[#27345C]/12 hover:border-[#8054D9]'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-2xl">{unit.emoji}</span>
+                      <span className="text-[11px] font-extrabold text-[#FF9360]">
+                        {done
+                          ? language === 'ar'
+                            ? 'مكتمل ✓'
+                            : 'Completed ✓'
+                          : ageMatch
+                            ? language === 'ar'
+                              ? 'موصى لعمرك'
+                              : 'For Your Age'
+                            : language === 'ar'
+                              ? '٦ مراحل'
+                              : '6 Stages'}
+                      </span>
+                    </div>
+                    <p className="font-extrabold text-sm text-[#27345C] leading-snug">
+                      {t(unit.title, language)}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Tier Switcher */}
           <div className="flex flex-wrap gap-2">
             {NUMBER_TIERS.map((tier) => (
@@ -1134,9 +1466,23 @@ export const AcademyScreen: React.FC = () => {
           {/* Colors Real-World Gallery + Shapes Explorer */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             <div className="nono-card rounded-3xl p-6 space-y-4">
-              <h3 className="text-xl font-extrabold text-[#27345C]">
-                {language === 'ar' ? 'الألوان في عالمنا اليومي' : 'Colors in Everyday Life'}
-              </h3>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-xl font-extrabold text-[#27345C]">
+                  {language === 'ar' ? 'الألوان في عالمنا اليومي' : 'Colors in Everyday Life'}
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setDeepTarget({ type: 'color', colorId: selectedColorId })}
+                  className="nono-btn-tactile px-4 py-2 rounded-xl bg-[#FF4D6D] text-white text-xs font-extrabold flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Play className="w-3.5 h-3.5 fill-white" />
+                  <span>
+                    {language === 'ar'
+                      ? `ابدأ رحلة الـ١٠ مراحل للون (${t(ACADEMY_COLORS.find((c) => c.id === selectedColorId)?.name || ACADEMY_COLORS[0].name, language)})`
+                      : `Start 10-Stage Journey (${t(ACADEMY_COLORS.find((c) => c.id === selectedColorId)?.name || ACADEMY_COLORS[0].name, language)})`}
+                  </span>
+                </button>
+              </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {ACADEMY_COLORS.map((col) => (
                   <button

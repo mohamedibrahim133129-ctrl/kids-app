@@ -2,6 +2,7 @@ import React from 'react';
 import {
   Award,
   BookOpen,
+  ClipboardCheck,
   Compass,
   FlaskConical,
   GraduationCap,
@@ -34,10 +35,11 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
   const navItems: Array<{ id: AppScreen; label: { ar: string; en: string }; icon: React.ReactNode; mobile?: boolean }> = [
     { id: 'home', label: UI_COPY.nav.home, icon: <Home className="w-4 h-4" />, mobile: true },
     { id: 'academy', label: UI_COPY.nav.academy, icon: <GraduationCap className="w-4 h-4" />, mobile: true },
+    { id: 'exams', label: UI_COPY.nav.exams, icon: <ClipboardCheck className="w-4 h-4" />, mobile: true },
     { id: 'fun-zone', label: UI_COPY.nav.funZone, icon: <Sparkles className="w-4 h-4" />, mobile: true },
     { id: 'map', label: UI_COPY.nav.map, icon: <Compass className="w-4 h-4" />, mobile: true },
     { id: 'discovery-lab', label: UI_COPY.nav.lab, icon: <FlaskConical className="w-4 h-4" /> },
-    { id: 'stories', label: UI_COPY.nav.stories, icon: <BookOpen className="w-4 h-4" />, mobile: true },
+    { id: 'stories', label: UI_COPY.nav.stories, icon: <BookOpen className="w-4 h-4" /> },
     { id: 'my-room', label: UI_COPY.nav.room, icon: <Palette className="w-4 h-4" />, mobile: true },
     { id: 'achievements', label: UI_COPY.nav.achievements, icon: <Award className="w-4 h-4" /> },
   ];

@@ -78,6 +78,7 @@ export const UI_COPY = {
   nav: {
     home: { ar: 'الرئيسية', en: 'Home' },
     academy: { ar: 'أكاديمية نونو', en: 'Academy' },
+    exams: { ar: 'الامتحانات', en: 'Exams' },
     funZone: { ar: 'منطقة المرح', en: 'Fun Zone' },
     map: { ar: 'العوالم', en: 'Worlds' },
     games: { ar: 'الألعاب', en: 'Games' },

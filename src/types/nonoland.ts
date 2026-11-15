@@ -58,6 +58,7 @@ export type AppScreen =
   | 'baseline-assessment'
   | 'home'
   | 'academy'
+  | 'exams'
   | 'fun-zone'
   | 'map'
   | 'world-detail'
@@ -71,19 +72,109 @@ export type AppScreen =
   | 'achievements'
   | 'parent-dashboard';
 
-export type ConceptDomain = 'arabic' | 'english' | 'numbers' | 'colors-shapes';
+export type ConceptDomain = 'arabic' | 'english' | 'numbers' | 'colors-shapes' | 'science';
 
 export type ConceptMasteryStage = 'exposed' | 'recognized' | 'recalled' | 'applied';
+
+export type ConceptStatus =
+  | 'not-started'
+  | 'learning'
+  | 'practicing'
+  | 'improving'
+  | 'well-understood'
+  | 'needs-revision';
 
 export interface ConceptRecord {
   conceptId: string;
   domain: ConceptDomain;
   label: LocalizedText;
   stage: ConceptMasteryStage;
+  status?: ConceptStatus;
+  introduced?: boolean;
+  explained?: boolean;
+  practiced?: boolean;
+  correctlyIdentified?: boolean;
+  independentlyCompleted?: boolean;
+  appliedInNewContext?: boolean;
+  retainedAfterReview?: boolean;
+  needsRevision?: boolean;
+  completedLessonStages?: number[];
   exposures: number;
   correctCount: number;
   mistakesCount: number;
   lastPracticedAt: string;
+}
+
+export type ExamSubject = 'comprehensive' | 'arabic' | 'english' | 'math' | 'colors-science';
+
+export type ExamQuestionType =
+  | 'recognition'
+  | 'listening'
+  | 'matching'
+  | 'missing-letter'
+  | 'quantity'
+  | 'sequence'
+  | 'reading'
+  | 'problem-solving';
+
+export interface ExamQuestionItem {
+  id: string;
+  subject: Exclude<ExamSubject, 'comprehensive'>;
+  ageGroups: AgeGroupId[];
+  type: ExamQuestionType;
+  difficulty: 1 | 2 | 3;
+  lessonRefId: string;
+  lessonTitle: LocalizedText;
+  prompt: LocalizedText;
+  audioText?: string;
+  audioLang?: Language;
+  visualCue?: string;
+  options: Array<{ id: string; label: LocalizedText; visual: string }>;
+  correctOptionId: string;
+  explanation: LocalizedText;
+  published?: boolean;
+}
+
+export interface ExamConfig {
+  examPriceEgp: number;
+  currency: 'EGP';
+  passingPercentage: number;
+  questionsPerExam: number;
+  paymentGatewayMode: 'development-test-verification' | 'live-gateway';
+}
+
+export interface ExamAttemptSummary {
+  id: string;
+  childId: string;
+  childName: string;
+  ageGroup: AgeGroupId;
+  subject: ExamSubject;
+  mode: 'practice' | 'official';
+  score: number;
+  totalQuestions: number;
+  percentage: number;
+  passed: boolean;
+  passingPercentage: number;
+  weakLessonTitles: LocalizedText[];
+  certificateCode?: string;
+  completedAt: string;
+  paymentVerified: boolean;
+  amountPaidEgp: number;
+}
+
+export interface CmsLessonRecord {
+  id: string;
+  domain: ConceptDomain;
+  title: LocalizedText;
+  summary: LocalizedText;
+  ageGroups: AgeGroupId[];
+  targetSymbol: string;
+  colorHex?: string;
+  imageUrl?: string;
+  audioUrl?: string;
+  examples: Array<{ visual: string; label: LocalizedText }>;
+  published: boolean;
+  updatedAt: string;
 }
 
 export interface CharacterOutfit {
@@ -215,6 +306,8 @@ export interface ChildProfile {
   certificates: Certificate[];
   skillProgress: Record<SkillId, SkillProgress>;
   conceptMastery?: Record<string, ConceptRecord>;
+  completedDeepLessons?: string[];
+  examHistory?: ExamAttemptSummary[];
   characterOutfits?: Record<string, CharacterOutfit>;
   unlockedFunRewards?: string[];
   attempts: LearningAttempt[];
@@ -356,6 +449,15 @@ export interface Certificate {
   achievementTitle: LocalizedText;
   issuedAt: string;
   levelCompleted: number;
+  isOfficialExam?: boolean;
+  examSubject?: ExamSubject;
+  score?: number;
+  totalQuestions?: number;
+  percentage?: number;
+  passingPercentage?: number;
+  ageGroup?: AgeGroupId;
+  verificationUrl?: string;
+  revoked?: boolean;
 }
 
 export interface DailyMission {

@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import {
   Award,
   BookOpen,
+  ClipboardCheck,
   Compass,
   FlaskConical,
   Gamepad2,
@@ -158,8 +159,8 @@ export const HomeScreen: React.FC = () => {
         </div>
       </section>
 
-      {/* FEATURED HUBS: LEARNING ACADEMY & FUN ZONE */}
-      <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* FEATURED HUBS: LEARNING ACADEMY, OFFICIAL EXAMS & FUN ZONE */}
+      <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <button
           type="button"
           onClick={() => navigate('academy')}
@@ -168,19 +169,43 @@ export const HomeScreen: React.FC = () => {
           <div className="space-y-1.5">
             <div className="flex items-center gap-2 text-xs font-extrabold text-[#8054D9]">
               <GraduationCap className="w-4 h-4" />
-              <span>{language === 'ar' ? 'التعلّم متعدد الحواس' : 'Multi-Sensory Education'}</span>
+              <span>{language === 'ar' ? 'رحلات تعليمية عميقة' : 'Deep Multi-Stage Learning'}</span>
             </div>
-            <h2 className="text-xl sm:text-2xl font-extrabold text-[#27345C]">
+            <h2 className="text-xl font-extrabold text-[#27345C]">
               {language === 'ar' ? 'أكاديمية نونو للتعلّم' : "Nono's Learning Academy"}
             </h2>
             <p className="text-xs sm:text-sm text-[#27345C]/75">
               {language === 'ar'
-                ? '٢٨ حرفاً عربياً، A-Z، أرقام بكميات حقيقية، تتبّع باللمس، ومختبر مزج الألوان!'
-                : '28 Arabic & 26 English letters, interactive tracing, quantity math & Color Mixing Lab!'}
+                ? 'رحلات ١٠–١١ مرحلة للألوان والحروف والرياضيات، تتبع باللمس ومختبر الألوان!'
+                : '10–11 stage concept journeys for colors, Arabic & English letters, math & tracing!'}
             </p>
           </div>
-          <div className="w-14 h-14 rounded-2xl bg-[#8054D9] text-white flex items-center justify-center text-2xl shrink-0 shadow-md">
+          <div className="w-12 h-12 rounded-2xl bg-[#8054D9] text-white flex items-center justify-center text-2xl shrink-0 shadow-md">
             🎓
+          </div>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => navigate('exams')}
+          className="nono-card rounded-3xl p-5 sm:p-6 text-start bg-gradient-to-br from-[#FFF3D1] via-white to-[#E2F9EC] border-2 border-[#FFD84D]/50 hover:border-[#FF9360] transition-all cursor-pointer flex items-center justify-between gap-4"
+        >
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2 text-xs font-extrabold text-[#FF9360]">
+              <ClipboardCheck className="w-4 h-4" />
+              <span>{language === 'ar' ? '٤٠ سؤالاً · شهادة معتمدة' : '40 Questions · Verified Certificate'}</span>
+            </div>
+            <h2 className="text-xl font-extrabold text-[#27345C]">
+              {language === 'ar' ? 'اختبارات نونو الرسمية' : 'NonoLand Official Exams'}
+            </h2>
+            <p className="text-xs sm:text-sm text-[#27345C]/75">
+              {language === 'ar'
+                ? 'تدريب مجاني أو امتحان رسمي من ٤٠ سؤالاً (نسبة النجاح ٧٠٪) مع شهادة برمز تحقق!'
+                : 'Free practice or 40-question official assessment (70% pass) with verified certificate!'}
+            </p>
+          </div>
+          <div className="w-12 h-12 rounded-2xl bg-[#FF9360] text-white flex items-center justify-center text-2xl shrink-0 shadow-md">
+            🏅
           </div>
         </button>
 
@@ -194,16 +219,16 @@ export const HomeScreen: React.FC = () => {
               <Gamepad2 className="w-4 h-4" />
               <span>{language === 'ar' ? 'نونو ولولو وليو وبوبو وإيلي وتيتي' : 'Nono, Lolo, Leo, Bobo, Ellie & Titi'}</span>
             </div>
-            <h2 className="text-xl sm:text-2xl font-extrabold text-[#27345C]">
+            <h2 className="text-xl font-extrabold text-[#27345C]">
               {language === 'ar' ? 'منطقة المرح ويوتيوب الآمن' : "Nono's Fun Zone & YouTube"}
             </h2>
             <p className="text-xs sm:text-sm text-[#27345C]/75">
               {language === 'ar'
-                ? 'ألعاب، فرقة موسيقية، مسرح مضحك، تلبيس الأبطال، حديقة تفاعلية وفيديوهات معتمدة!'
-                : 'Mini games, dance band, comedy skits, dress-up studio, playground & parent-approved videos!'}
+                ? 'ألعاب، فرقة موسيقية، مسرح مضحك، تلبيس الأبطال، وفيديوهات معتمدة!'
+                : 'Mini games, dance band, comedy skits, dress-up studio & parent-approved videos!'}
             </p>
           </div>
-          <div className="w-14 h-14 rounded-2xl bg-[#FF78B7] text-white flex items-center justify-center text-2xl shrink-0 shadow-md">
+          <div className="w-12 h-12 rounded-2xl bg-[#FF78B7] text-white flex items-center justify-center text-2xl shrink-0 shadow-md">
             🎪
           </div>
         </button>

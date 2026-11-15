@@ -1,11 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Award,
   BarChart3,
   BookOpen,
   Check,
+  ClipboardCheck,
   Clock,
+  Database,
   Download,
   ExternalLink,
+  Eye,
   Film,
   Lock,
   Plus,
@@ -20,13 +24,16 @@ import {
   Wifi,
   WifiOff,
 } from 'lucide-react';
+import { AdminCmsPanel } from '../components/AdminCmsPanel';
+import { CertificateModal } from '../components/CertificateModal';
 import { useNonoLand } from '../context/NonoLandContext';
 import { PARENT_OFFLINE_ACTIVITIES } from '../data/academyData';
+import { AGE_CURRICULUM_OUTCOMES } from '../data/deepCurriculum';
 import { OFFICIAL_YOUTUBE_CHANNEL } from '../data/funZoneData';
 import { LEARNING_WORLDS } from '../data/worlds';
 import { generateParentInsights } from '../engine/adaptiveEngine';
 import { AGE_GROUP_META, formatDate, formatNumber, SKILL_LABELS, t, UI_COPY } from '../i18n/translations';
-import { SkillId, YouTubeCategory } from '../types/nonoland';
+import { Certificate, SkillId, YouTubeCategory } from '../types/nonoland';
 import { soundEngine } from '../utils/soundEngine';
 
 function extractYouTubeId(input: string): string | null {
@@ -83,7 +90,8 @@ export const ParentDashboardScreen: React.FC = () => {
   const [gateError, setGateError] = useState(false);
   const challenge = useMemo(() => ({ a: 7, b: 4, answer: 28 }), []);
 
-  const [tab, setTab] = useState<'reports' | 'profiles' | 'controls' | 'offline' | 'youtube'>('reports');
+  const [tab, setTab] = useState<'reports' | 'profiles' | 'controls' | 'offline' | 'youtube' | 'admin'>('reports');
+  const [selectedCert, setSelectedCert] = useState<Certificate | null>(null);
 
   // Curated YouTube Form State
   const [ytInput, setYtInput] = useState('');
@@ -204,12 +212,13 @@ export const ParentDashboardScreen: React.FC = () => {
           { id: 'controls' as const, label: UI_COPY.parent.controlsTab, icon: <Volume2 className="w-4 h-4" /> },
           { id: 'offline' as const, label: UI_COPY.parent.offlineTab, icon: <Download className="w-4 h-4" /> },
           { id: 'youtube' as const, label: { ar: 'فيديوهات يوتيوب الآمنة', en: 'Curated YouTube' }, icon: <Film className="w-4 h-4" /> },
+          { id: 'admin' as const, label: { ar: 'إدارة المحتوى والامتحانات', en: 'Admin CMS' }, icon: <Database className="w-4 h-4" /> },
         ].map((tb) => (
           <button
             key={tb.id}
             type="button"
             onClick={() => setTab(tb.id)}
-            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 cursor-pointer transition-colors ${
+            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 cursor-pointer transition-colors whitespace-nowrap shrink-0 ${
               tab === tb.id ? 'bg-[#27345C] text-white' : 'text-[#27345C]/75 hover:bg-slate-50'
             }`}
           >
@@ -342,43 +351,69 @@ export const ParentDashboardScreen: React.FC = () => {
 
           {/* Concept-Level Evidence (Multi-Sensory Mastery) & Offline Parent-Child Activities */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-            <div className="lg:col-span-7 nono-card rounded-3xl p-6 space-y-3">
-              <h2 className="text-lg font-extrabold text-[#27345C] flex items-center gap-2">
-                <BookOpen className="w-5 h-5 text-[#8054D9]" />
-                <span>
-                  {language === 'ar'
-                    ? 'سجل إتقان المفاهيم (أكاديمية نونو)'
-                    : 'Concept-Level Learning Evidence (Academy)'}
+            <div className="lg:col-span-7 nono-card rounded-3xl p-6 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-lg font-extrabold text-[#27345C] flex items-center gap-2">
+                  <BookOpen className="w-5 h-5 text-[#8054D9]" />
+                  <span>
+                    {language === 'ar'
+                      ? 'سجل إتقان المفاهيم والرحلات العميقة'
+                      : 'Deep Concept Mastery & Revision Log'}
+                  </span>
+                </h2>
+                <span className="text-xs font-extrabold text-[#8054D9] font-mono-num">
+                  {(activeChild.completedDeepLessons || []).length}{' '}
+                  {language === 'ar' ? 'رحلة عميقة مكتملة' : 'deep journeys completed'}
                 </span>
-              </h2>
+              </div>
+
+              {/* Age-Based Curriculum Focus */}
+              <div className="p-3.5 rounded-2xl bg-[#F3E8FF]/60 border border-[#8054D9]/15 text-xs space-y-1">
+                <p className="font-extrabold text-[#8054D9]">
+                  {t(AGE_CURRICULUM_OUTCOMES[activeChild.ageGroup].title, language)}
+                </p>
+                <p className="text-[#27345C]/80">
+                  {t(AGE_CURRICULUM_OUTCOMES[activeChild.ageGroup].expectedOutcome, language)}
+                </p>
+              </div>
+
               {Object.values(activeChild.conceptMastery || {}).length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   {Object.values(activeChild.conceptMastery || {})
-                    .slice(0, 8)
-                    .map((c) => (
-                      <div
-                        key={c.conceptId}
-                        className="p-3 rounded-2xl bg-[#FFF8E9] border border-[#27345C]/10 flex items-center justify-between gap-2"
-                      >
-                        <div>
-                          <p className="font-bold text-sm text-[#27345C]">{t(c.label, language)}</p>
-                          <p className="text-[11px] text-[#27345C]/65 font-mono-num">
-                            {c.stage} · {c.correctCount}✓ / {c.mistakesCount}↺
-                          </p>
-                        </div>
-                        {c.mistakesCount > c.correctCount && (
-                          <span className="text-[11px] font-extrabold text-[#FF9360]">
-                            {language === 'ar' ? 'يُقترح مراجعة' : 'Review'}
+                    .slice(0, 10)
+                    .map((c) => {
+                      const statusLabel =
+                        c.status === 'well-understood'
+                          ? { ar: 'متقن', en: 'Well Understood', cls: 'bg-[#55D98B]/25 text-[#27345C]' }
+                          : c.needsRevision || c.status === 'needs-revision'
+                            ? { ar: 'يحتاج مراجعة', en: 'Needs Revision', cls: 'bg-[#FF9360]/20 text-[#27345C]' }
+                            : c.status === 'improving'
+                              ? { ar: 'يتحسن', en: 'Improving', cls: 'bg-[#39BDF2]/20 text-[#27345C]' }
+                              : { ar: 'قيد التدريب', en: 'Practicing', cls: 'bg-[#FFD84D]/30 text-[#27345C]' };
+                      return (
+                        <div
+                          key={c.conceptId}
+                          className="p-3 rounded-2xl bg-[#FFF8E9] border border-[#27345C]/10 flex items-center justify-between gap-2"
+                        >
+                          <div>
+                            <p className="font-bold text-sm text-[#27345C]">{t(c.label, language)}</p>
+                            <p className="text-[11px] text-[#27345C]/65 font-mono-num">
+                              {c.correctCount}✓ / {c.mistakesCount}↺ · {(c.completedLessonStages || []).length}{' '}
+                              {language === 'ar' ? 'مراحل' : 'stages'}
+                            </p>
+                          </div>
+                          <span className={`px-2 py-1 rounded-lg text-[10px] font-extrabold shrink-0 ${statusLabel.cls}`}>
+                            {language === 'ar' ? statusLabel.ar : statusLabel.en}
                           </span>
-                        )}
-                      </div>
-                    ))}
+                        </div>
+                      );
+                    })}
                 </div>
               ) : (
                 <p className="text-sm text-[#27345C]/70">
                   {language === 'ar'
-                    ? 'عندما يبدأ طفلك بالتدرّب في أكاديمية نونو، ستظهر هنا المفاهيم التي تعرّف عليها وتتبعها وطبقها.'
-                    : 'Once your child explores letters, numbers, or colors in Learning Academy, concept-level mastery appears here.'}
+                    ? 'عندما يبدأ طفلك رحلات الـ١٠ مراحل في أكاديمية نونو، ستظهر هنا تفاصيل كل مفهوم وما يحتاج لمراجعة.'
+                    : 'Once your child completes multi-stage lessons in Nono’s Academy, concept-level mastery appears here.'}
                 </p>
               )}
             </div>
@@ -397,6 +432,100 @@ export const ParentDashboardScreen: React.FC = () => {
                   </div>
                 ))}
               </div>
+            </div>
+          </div>
+
+          {/* Official Exams History & Earned Certificates */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+            <div className="lg:col-span-6 nono-card rounded-3xl p-6 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-lg font-extrabold text-[#27345C] flex items-center gap-2">
+                  <ClipboardCheck className="w-5 h-5 text-[#FF9360]" />
+                  <span>{language === 'ar' ? 'نتائج امتحانات نونو الرسمية والتدريبية' : 'Exam Results & Attempt History'}</span>
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => navigate('exams')}
+                  className="px-3 py-1.5 rounded-xl bg-[#8054D9] text-white text-xs font-bold cursor-pointer"
+                >
+                  {language === 'ar' ? 'فتح الامتحانات' : 'Go to Exams'}
+                </button>
+              </div>
+              {(activeChild.examHistory || []).length === 0 ? (
+                <p className="text-sm text-[#27345C]/70">
+                  {language === 'ar'
+                    ? 'لم يخض الطفل أي امتحان بعد. يمكنه البدء بالتدريب المجاني أو الامتحان الرسمي من ٤٠ سؤالاً.'
+                    : 'No exams completed yet. Try free practice or take a 40-question official exam.'}
+                </p>
+              ) : (
+                <div className="space-y-2.5">
+                  {(activeChild.examHistory || []).map((ex) => (
+                    <div
+                      key={ex.id}
+                      className="p-3.5 rounded-2xl bg-[#FFF8E9] border border-[#27345C]/10 flex items-center justify-between gap-2 text-xs"
+                    >
+                      <div>
+                        <p className="font-extrabold text-sm text-[#27345C]">
+                          {ex.subject.toUpperCase()} · {ex.mode === 'official' ? (language === 'ar' ? 'امتحان رسمي' : 'Official') : (language === 'ar' ? 'تدريب' : 'Practice')}
+                        </p>
+                        <p className="text-[#27345C]/65">
+                          {formatDate(ex.completedAt, language)}
+                          {ex.weakLessonTitles.length > 0 && !ex.passed
+                            ? ` · ${language === 'ar' ? 'راجع:' : 'Revise:'} ${ex.weakLessonTitles.slice(0, 2).map((w) => t(w, language)).join(', ')}`
+                            : ''}
+                        </p>
+                      </div>
+                      <span
+                        className={`px-2.5 py-1 rounded-xl font-extrabold font-mono-num shrink-0 ${
+                          ex.passed ? 'bg-[#55D98B]/25 text-[#27345C]' : 'bg-[#FF4D6D]/15 text-[#FF4D6D]'
+                        }`}
+                      >
+                        {ex.score}/{ex.totalQuestions} ({ex.percentage}%)
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="lg:col-span-6 nono-card rounded-3xl p-6 space-y-3">
+              <h2 className="text-lg font-extrabold text-[#27345C] flex items-center gap-2">
+                <Award className="w-5 h-5 text-[#8054D9]" />
+                <span>{language === 'ar' ? 'شهادات الطفل القابلة للطباعة والتحقق' : 'Child Certificates & Verification'}</span>
+              </h2>
+              {activeChild.certificates.length === 0 ? (
+                <p className="text-sm text-[#27345C]/70">
+                  {language === 'ar'
+                    ? 'تصدر الشهادات تلقائياً عند إتمام العوالم أو النجاح بنسبة ٧٠٪ في الامتحان الرسمي.'
+                    : 'Certificates appear here when worlds are completed or an official exam passes ≥ 70%.'}
+                </p>
+              ) : (
+                <div className="space-y-2.5">
+                  {activeChild.certificates.map((cert) => (
+                    <div
+                      key={cert.id}
+                      className="p-3.5 rounded-2xl bg-[#FFF8E9] border border-[#FFD84D] flex items-center justify-between gap-2"
+                    >
+                      <div>
+                        <p className="font-extrabold text-sm text-[#27345C]">
+                          {t(cert.achievementTitle, language)}
+                        </p>
+                        <p className="text-[11px] text-[#27345C]/65 font-mono-num">
+                          {cert.uniqueCode} · {formatDate(cert.issuedAt, language)}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedCert(cert)}
+                        className="px-3 py-1.5 rounded-xl bg-[#27345C] text-white text-xs font-bold flex items-center gap-1 cursor-pointer shrink-0"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>{language === 'ar' ? 'عرض وطباعة' : 'View / Print'}</span>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -872,6 +1001,17 @@ export const ParentDashboardScreen: React.FC = () => {
             )}
           </div>
         </div>
+      )}
+
+      {/* TAB 6: ADMIN CMS (LESSONS, QUESTION BANK, PRICING & CERTIFICATES) */}
+      {tab === 'admin' && <AdminCmsPanel language={language} />}
+
+      {selectedCert && (
+        <CertificateModal
+          certificate={selectedCert}
+          language={language}
+          onClose={() => setSelectedCert(null)}
+        />
       )}
     </div>
   );

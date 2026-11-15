@@ -7,6 +7,7 @@ import { AchievementsScreen } from './screens/AchievementsScreen';
 import { AcademyScreen } from './screens/AcademyScreen';
 import { AdventureMapScreen, WorldDetailScreen } from './screens/AdventureMapScreen';
 import { AssessmentResultsScreen, DiscoveryLabScreen } from './screens/DiscoveryLabScreen';
+import { ExamsScreen } from './screens/ExamsScreen';
 import { FunZoneScreen } from './screens/FunZoneScreen';
 import { GameArenaScreen, GameResultsScreen } from './screens/GameArenaScreen';
 import { HomeScreen } from './screens/HomeScreen';
@@ -50,6 +51,8 @@ const ScreenRouter: React.FC = () => {
         return <HomeScreen />;
       case 'academy':
         return <AcademyScreen />;
+      case 'exams':
+        return <ExamsScreen />;
       case 'fun-zone':
         return <FunZoneScreen />;
       case 'map':

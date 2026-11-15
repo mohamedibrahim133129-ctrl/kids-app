@@ -15,7 +15,9 @@ import {
   ChildProfile,
   ConceptDomain,
   ConceptMasteryStage,
+  ConceptStatus,
   CuratedYouTubeVideo,
+  ExamAttemptSummary,
   Language,
   LearningAttempt,
   LocalizedText,
@@ -142,7 +144,19 @@ interface NonoLandContextValue {
     label: LocalizedText;
     stage: ConceptMasteryStage;
     isCorrect: boolean;
+    lessonStageNum?: number;
+    isIndependent?: boolean;
+    isRetentionReview?: boolean;
   }) => void;
+  completeDeepLesson: (input: {
+    lessonId: string;
+    conceptId: string;
+    domain: ConceptDomain;
+    label: LocalizedText;
+    starsReward?: number;
+    mistakesCount?: number;
+  }) => void;
+  recordExamCompletion: (summary: ExamAttemptSummary, issuedCert?: Certificate) => void;
   updateCharacterOutfit: (characterId: CharacterOutfit['characterId'], patch: Partial<CharacterOutfit>) => void;
   grantFunReward: (stars: number, rewardId?: string) => void;
   curatedVideos: CuratedYouTubeVideo[];
@@ -651,6 +665,9 @@ export const NonoLandProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     label,
     stage,
     isCorrect,
+    lessonStageNum,
+    isIndependent,
+    isRetentionReview,
   }) => {
     const stageRank: Record<ConceptMasteryStage, number> = {
       exposed: 1,
@@ -672,6 +689,36 @@ export const NonoLandProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               ? stage
               : existing?.stage || 'exposed';
 
+        const nextCorrect = (existing?.correctCount || 0) + (isCorrect ? 1 : 0);
+        const nextMistakes = (existing?.mistakesCount || 0) + (isCorrect ? 0 : 1);
+        const nextExposures = (existing?.exposures || 0) + 1;
+
+        const completedStages = Array.from(
+          new Set([
+            ...(existing?.completedLessonStages || []),
+            ...(lessonStageNum ? [lessonStageNum] : []),
+          ]),
+        );
+
+        const introduced = existing?.introduced || nextExposures >= 1;
+        const explained = existing?.explained || stage !== 'exposed' || completedStages.includes(2);
+        const practiced = existing?.practiced || nextExposures >= 2 || completedStages.length >= 3;
+        const correctlyIdentified =
+          existing?.correctlyIdentified || (isCorrect && (stage === 'recognized' || stage === 'recalled' || stage === 'applied'));
+        const independentlyCompleted =
+          existing?.independentlyCompleted || Boolean(isIndependent && isCorrect);
+        const appliedInNewContext =
+          existing?.appliedInNewContext || (isCorrect && stage === 'applied');
+        const retainedAfterReview =
+          existing?.retainedAfterReview || Boolean(isRetentionReview && isCorrect);
+        const needsRevision = nextMistakes > nextCorrect || (!isCorrect && nextMistakes >= 2);
+
+        let status: ConceptStatus = 'learning';
+        if (needsRevision) status = 'needs-revision';
+        else if (independentlyCompleted && appliedInNewContext && nextCorrect >= 3) status = 'well-understood';
+        else if (nextCorrect >= 2 && correctlyIdentified) status = 'improving';
+        else if (practiced) status = 'practicing';
+
         return {
           ...c,
           stars: isCorrect && !existing ? c.stars + 1 : c.stars,
@@ -682,15 +729,103 @@ export const NonoLandProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               domain,
               label,
               stage: nextStage,
-              exposures: (existing?.exposures || 0) + 1,
-              correctCount: (existing?.correctCount || 0) + (isCorrect ? 1 : 0),
-              mistakesCount: (existing?.mistakesCount || 0) + (isCorrect ? 0 : 1),
+              status,
+              introduced,
+              explained,
+              practiced,
+              correctlyIdentified,
+              independentlyCompleted,
+              appliedInNewContext,
+              retainedAfterReview,
+              needsRevision,
+              completedLessonStages: completedStages,
+              exposures: nextExposures,
+              correctCount: nextCorrect,
+              mistakesCount: nextMistakes,
               lastPracticedAt: new Date().toISOString(),
             },
           },
         };
       }),
     }));
+  };
+
+  const completeDeepLesson: NonoLandContextValue['completeDeepLesson'] = ({
+    lessonId,
+    conceptId,
+    domain,
+    label,
+    starsReward = 4,
+    mistakesCount = 0,
+  }) => {
+    soundEngine.playCelebration();
+    setPersisted((prev) => ({
+      ...prev,
+      children: prev.children.map((c) => {
+        if (c.id !== activeChild.id) return c;
+        const completed = c.completedDeepLessons || [];
+        const alreadyDone = completed.includes(lessonId);
+        const nextCompleted = alreadyDone ? completed : [...completed, lessonId];
+        const map = c.conceptMastery || {};
+        const existing = map[conceptId];
+        const needsRev = mistakesCount >= 3;
+        return {
+          ...c,
+          stars: c.stars + (alreadyDone ? 1 : starsReward),
+          totalLearningMinutes: c.totalLearningMinutes + 4,
+          completedDeepLessons: nextCompleted,
+          conceptMastery: {
+            ...map,
+            [conceptId]: {
+              conceptId,
+              domain,
+              label,
+              stage: 'applied',
+              status: needsRev ? 'improving' : 'well-understood',
+              introduced: true,
+              explained: true,
+              practiced: true,
+              correctlyIdentified: true,
+              independentlyCompleted: true,
+              appliedInNewContext: true,
+              retainedAfterReview: alreadyDone || existing?.retainedAfterReview || false,
+              needsRevision: needsRev,
+              completedLessonStages: existing?.completedLessonStages || [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+              exposures: (existing?.exposures || 0) + 1,
+              correctCount: (existing?.correctCount || 0) + 3,
+              mistakesCount: (existing?.mistakesCount || 0) + mistakesCount,
+              lastPracticedAt: new Date().toISOString(),
+            },
+          },
+        };
+      }),
+    }));
+  };
+
+  const recordExamCompletion: NonoLandContextValue['recordExamCompletion'] = (
+    summary,
+    issuedCert,
+  ) => {
+    setPersisted((prev) => ({
+      ...prev,
+      children: prev.children.map((c) => {
+        if (c.id !== activeChild.id) return c;
+        const prevHistory = c.examHistory || [];
+        const alreadyHasCert =
+          issuedCert && c.certificates.some((cert) => cert.uniqueCode === issuedCert.uniqueCode);
+        const nextCerts =
+          issuedCert && !alreadyHasCert ? [issuedCert, ...c.certificates] : c.certificates;
+
+        return {
+          ...c,
+          stars: c.stars + (summary.passed ? 10 : 3),
+          examHistory: [summary, ...prevHistory],
+          certificates: nextCerts,
+        };
+      }),
+    }));
+    if (summary.passed) soundEngine.playCelebration();
+    else soundEngine.playEncourage();
   };
 
   const updateCharacterOutfit: NonoLandContextValue['updateCharacterOutfit'] = (
@@ -814,6 +949,8 @@ export const NonoLandProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         syncOfflineQueue,
         resetAllData,
         recordConceptInteraction,
+        completeDeepLesson,
+        recordExamCompletion,
         updateCharacterOutfit,
         grantFunReward,
         curatedVideos,

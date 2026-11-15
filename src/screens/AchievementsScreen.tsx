@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Award, Lock, Printer, Sparkles, Star, Users, X } from 'lucide-react';
+import { Award, Lock, Star } from 'lucide-react';
+import { CertificateModal } from '../components/CertificateModal';
 import { useNonoLand } from '../context/NonoLandContext';
 import { CHARACTER_COMPANIONS, REWARD_BADGES } from '../data/rewardsAndRoom';
 import { getWorldById } from '../data/worlds';
@@ -189,72 +190,13 @@ export const AchievementsScreen: React.FC = () => {
         </div>
       )}
 
-      {/* Printable Certificate Modal */}
+      {/* Printable & Verifiable Certificate Modal */}
       {selectedCert && (
-        <div className="fixed inset-0 z-50 bg-[#27345C]/65 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-2xl bg-white rounded-3xl p-5 sm:p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-[#27345C]/65">
-                {language === 'ar' ? 'شهادة إنجاز رسمية من نونو لاند' : 'Official NonoLand Certificate'}
-              </span>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  className="px-4 py-2 rounded-xl bg-[#8054D9] text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Printer className="w-4 h-4" />
-                  <span>{language === 'ar' ? 'طباعة / حفظ PDF' : 'Print / Save PDF'}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedCert(null)}
-                  className="p-2 rounded-xl bg-slate-100 cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            <div
-              id="printable-certificate"
-              className="rounded-3xl border-8 border-[#FFD84D] bg-gradient-to-br from-[#FFF8E9] via-white to-[#F2EBFF] p-8 text-center space-y-4"
-            >
-              <div className="flex items-center justify-center gap-2 text-[#8054D9] font-extrabold text-lg">
-                <span>🦊</span>
-                <span>{t(UI_COPY.appName, language)}</span>
-              </div>
-
-              <h2 className="text-3xl font-extrabold text-[#27345C]">
-                {language === 'ar' ? 'شهادة تقدير وإنجاز' : 'Certificate of Achievement'}
-              </h2>
-
-              <p className="text-sm text-[#27345C]/75">
-                {language === 'ar' ? 'تُمنح هذه الشهادة بفخر إلى المستكشف' : 'Proudly presented to Explorer'}
-              </p>
-
-              <p className="text-4xl font-extrabold text-[#8054D9] py-2 border-y-2 border-[#FFD84D]/60">
-                {selectedCert.childName}
-              </p>
-
-              <p className="text-base font-bold text-[#27345C]">
-                {t(selectedCert.achievementTitle, language)}
-              </p>
-              <p className="text-sm text-[#27345C]/75">
-                {t(selectedCert.worldName, language)} ·{' '}
-                {language === 'ar' ? `المستوى ${selectedCert.levelCompleted}` : `Level ${selectedCert.levelCompleted}`}
-              </p>
-
-              <div className="pt-4 flex items-center justify-between text-xs text-[#27345C]/65 font-mono-num">
-                <span>{formatDate(selectedCert.issuedAt, language)}</span>
-                <span className="flex items-center gap-1 text-[#FF9360] font-bold">
-                  <Star className="w-4 h-4 fill-[#FFD84D]" /> NonoLand Verified
-                </span>
-                <span>ID: {selectedCert.uniqueCode}</span>
-              </div>
-            </div>
-          </div>
-        </div>
+        <CertificateModal
+          certificate={selectedCert}
+          language={language}
+          onClose={() => setSelectedCert(null)}
+        />
       )}
     </div>
   );
