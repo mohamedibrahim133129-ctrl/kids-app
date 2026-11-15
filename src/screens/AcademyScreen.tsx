@@ -18,6 +18,7 @@ import {
   Volume2,
 } from 'lucide-react';
 import { DeepLessonEngine, DeepLessonTarget } from '../components/academy/DeepLessonEngine';
+import { Level1LessonRunner } from '../components/academy/Level1LessonRunner';
 import { TracingPad } from '../components/academy/TracingPad';
 import { NonoCharacter } from '../components/NonoCharacter';
 import { useNonoLand } from '../context/NonoLandContext';
@@ -31,17 +32,29 @@ import {
   PARENT_OFFLINE_ACTIVITIES,
 } from '../data/academyData';
 import { AGE_CURRICULUM_OUTCOMES, MATH_DEEP_UNITS } from '../data/deepCurriculum';
+import {
+  ALL_LEVEL1_LESSONS,
+  getLevel1LessonsBySubject,
+  LEVEL1_REVIEW_UNITS,
+} from '../data/level1Curriculum';
 import { AGE_GROUP_META, formatNumber, t } from '../i18n/translations';
-import { CmsLessonRecord, NonoMood } from '../types/nonoland';
+import {
+  CmsLessonRecord,
+  Level1LessonDefinition,
+  Level1Subject,
+  NonoMood,
+} from '../types/nonoland';
 import { soundEngine } from '../utils/soundEngine';
 
-type AcademyTab = 'daily' | 'arabic' | 'english' | 'numbers' | 'colors-shapes';
+type AcademyTab = 'level1' | 'daily' | 'arabic' | 'english' | 'numbers' | 'colors-shapes';
 
 export const AcademyScreen: React.FC = () => {
   const { activeChild, language, recordConceptInteraction, navigate } = useNonoLand();
-  const [tab, setTab] = useState<AcademyTab>('daily');
+  const [tab, setTab] = useState<AcademyTab>(activeChild.ageGroup === '3-4' ? 'level1' : 'daily');
   const [nonoMood, setNonoMood] = useState<NonoMood>('idle');
   const [deepTarget, setDeepTarget] = useState<DeepLessonTarget | null>(null);
+  const [activeL1Lesson, setActiveL1Lesson] = useState<Level1LessonDefinition | null>(null);
+  const [l1WorldFilter, setL1WorldFilter] = useState<Level1Subject>('arabic');
   const [cmsLessons, setCmsLessons] = useState<CmsLessonRecord[]>([]);
 
   useEffect(() => {
@@ -201,6 +214,23 @@ export const AcademyScreen: React.FC = () => {
   const ageCurriculum = AGE_CURRICULUM_OUTCOMES[activeChild.ageGroup];
   const completedDeepCount = (activeChild.completedDeepLessons || []).length;
 
+  const l1ProgressMap = activeChild.level1Progress || {};
+  const l1DemonstratedCount = Object.values(l1ProgressMap).filter(
+    (p) => p.status === 'demonstrated',
+  ).length;
+  const l1VisibleLessons = getLevel1LessonsBySubject(l1WorldFilter);
+  const l1VisibleReviews = LEVEL1_REVIEW_UNITS.filter((r) => r.subject === l1WorldFilter);
+
+  if (activeL1Lesson) {
+    return (
+      <Level1LessonRunner
+        lesson={activeL1Lesson}
+        onExit={() => setActiveL1Lesson(null)}
+        onSelectNextLesson={(nextLs) => setActiveL1Lesson(nextLs)}
+      />
+    );
+  }
+
   if (deepTarget) {
     return (
       <DeepLessonEngine
@@ -242,7 +272,8 @@ export const AcademyScreen: React.FC = () => {
       {/* Academy Section Tabs */}
       <div className="flex flex-wrap gap-2 bg-white p-2 rounded-2xl border border-[#27345C]/12">
         {[
-          { id: 'daily' as const, icon: <Sparkles className="w-4 h-4" />, ar: 'رحلة اليوم', en: 'Daily Journey' },
+          { id: 'level1' as const, icon: <GraduationCap className="w-4 h-4" />, ar: 'المستوى الأول (٧٥ درساً)', en: 'Level 1 (75 Lessons)' },
+          { id: 'daily' as const, icon: <Sparkles className="w-4 h-4" />, ar: 'رحلة اليوم والمستويات', en: 'Daily & Levels 2–3' },
           { id: 'arabic' as const, icon: <BookOpen className="w-4 h-4" />, ar: 'الحروف العربية (٢٨)', en: 'Arabic (28)' },
           { id: 'english' as const, icon: <Ear className="w-4 h-4" />, ar: 'الحروف الإنجليزية (A-Z)', en: 'English (A-Z)' },
           { id: 'numbers' as const, icon: <Calculator className="w-4 h-4" />, ar: 'الأرقام والرياضيات', en: 'Numbers & Math' },
@@ -255,7 +286,7 @@ export const AcademyScreen: React.FC = () => {
               soundEngine.playPop();
               setTab(item.id);
             }}
-            className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold flex items-center gap-2 cursor-pointer transition-colors ${
+            className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold flex items-center gap-2 cursor-pointer transition-colors whitespace-nowrap shrink-0 ${
               tab === item.id ? 'bg-[#8054D9] text-white shadow-sm' : 'text-[#27345C]/75 hover:bg-[#FFF8E9]'
             }`}
           >
@@ -264,6 +295,163 @@ export const AcademyScreen: React.FC = () => {
           </button>
         ))}
       </div>
+
+      {/* =========================================
+          TAB 0: LEVEL 1 COMPLETE CURRICULUM (75 LESSONS + 12 REVIEWS)
+      ========================================= */}
+      {tab === 'level1' && (
+        <div className="space-y-5">
+          <div className="nono-card rounded-3xl p-5 sm:p-6 bg-gradient-to-br from-[#FFF3D1]/60 via-white to-[#E5F6FF]/60 border-2 border-[#8054D9]/15 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <span className="text-xs font-extrabold text-[#8054D9]">
+                  {language === 'ar' ? 'المستوى الأول · المكتشفون الصغار (٣–٤ سنوات)' : 'Level 1 · Little Discoverers (Ages 3–4)'}
+                </span>
+                <h2 className="text-xl sm:text-2xl font-extrabold text-[#27345C] mt-1">
+                  {language === 'ar'
+                    ? 'عوالم التعلم الأربعة — ٧٥ درساً حقيقياً و١٢ وحدة مراجعة'
+                    : '4 Subject Worlds — 75 Real Lessons & 12 Review Units'}
+                </h2>
+              </div>
+              <div className="px-4 py-2 rounded-2xl bg-white border border-[#27345C]/12 text-xs font-extrabold text-[#27345C] font-mono-num">
+                {formatNumber(l1DemonstratedCount, language)} / {formatNumber(ALL_LEVEL1_LESSONS.length, language)}{' '}
+                {language === 'ar' ? 'مكتمل' : 'Demonstrated'}
+              </div>
+            </div>
+
+            {/* 4 Subject Worlds Switcher */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              {[
+                { id: 'arabic' as const, emoji: '📖', count: 28, ar: 'عالم الحروف العربية', en: 'Arabic Letters World', color: '#8054D9' },
+                { id: 'english' as const, emoji: '🔤', count: 26, ar: 'عالم الحروف الإنجليزية', en: 'English Alphabet World', color: '#39BDF2' },
+                { id: 'numbers' as const, emoji: '🔢', count: 11, ar: 'عالم الأرقام (٠–١٠)', en: 'Numbers World (0–10)', color: '#FF9360' },
+                { id: 'colors' as const, emoji: '🎨', count: 10, ar: 'عالم الألوان العشرة', en: 'Colors World (10)', color: '#FF4D6D' },
+              ].map((w) => {
+                const worldDone = getLevel1LessonsBySubject(w.id).filter(
+                  (ls) => l1ProgressMap[ls.id]?.status === 'demonstrated',
+                ).length;
+                const active = l1WorldFilter === w.id;
+                return (
+                  <button
+                    key={w.id}
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playPop();
+                      setL1WorldFilter(w.id);
+                    }}
+                    className={`p-4 rounded-2xl border-2 text-start space-y-1.5 cursor-pointer transition-all ${
+                      active ? 'bg-white shadow-md scale-[1.02]' : 'bg-white/75 border-[#27345C]/10'
+                    }`}
+                    style={{ borderColor: active ? w.color : undefined }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-2xl">{w.emoji}</span>
+                      <span className="text-xs font-extrabold font-mono-num" style={{ color: w.color }}>
+                        {worldDone}/{w.count}
+                      </span>
+                    </div>
+                    <p className="font-extrabold text-sm text-[#27345C]">
+                      {language === 'ar' ? w.ar : w.en}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Lessons Grid for Selected World (No Locking — Any Lesson Playable & Reviewable) */}
+          <div className="nono-card rounded-3xl p-5 sm:p-6 space-y-4">
+            <h3 className="text-lg font-extrabold text-[#27345C]">
+              {language === 'ar'
+                ? `الدروس التفاعلية (${formatNumber(l1VisibleLessons.length, language)} درساً)`
+                : `Interactive Lessons (${l1VisibleLessons.length} Lessons)`}
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {l1VisibleLessons.map((ls) => {
+                const prog = l1ProgressMap[ls.id];
+                const status = prog?.status || 'not-started';
+                const statusBadge =
+                  status === 'demonstrated'
+                    ? { ar: 'مُتقن ✓', en: 'Demonstrated ✓', cls: 'bg-[#55D98B]/25 text-[#27345C]' }
+                    : status === 'needs-revision'
+                      ? { ar: 'مراجعة مجدولة ↺', en: 'Needs Revision ↺', cls: 'bg-[#FF9360]/25 text-[#27345C]' }
+                      : status === 'practicing' || status === 'learning' || status === 'improving'
+                        ? { ar: 'قيد التعلّم', en: 'In Progress', cls: 'bg-[#FFD84D]/35 text-[#27345C]' }
+                        : { ar: 'ابدأ', en: 'Start', cls: 'bg-slate-100 text-[#27345C]/70' };
+                return (
+                  <button
+                    key={ls.id}
+                    type="button"
+                    onClick={() => {
+                      soundEngine.playPop();
+                      setActiveL1Lesson(ls);
+                    }}
+                    className="p-4 rounded-2xl bg-[#FFF8E9] border-2 border-[#27345C]/12 hover:border-[#8054D9] text-start space-y-2 cursor-pointer transition-all"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span
+                        className="w-11 h-11 rounded-xl flex items-center justify-center font-extrabold text-xl border border-[#27345C]/10"
+                        style={{
+                          backgroundColor: ls.colorHex || '#FFFFFF',
+                          color: ls.colorHex && ls.colorHex !== '#FFFFFF' ? '#FFFFFF' : '#27345C',
+                        }}
+                      >
+                        {ls.subject === 'colors' ? ls.teachingVocab[0]?.emoji : ls.targetSymbol}
+                      </span>
+                      <span className={`px-2 py-1 rounded-lg text-[10px] font-extrabold whitespace-nowrap shrink-0 ${statusBadge.cls}`}>
+                        {language === 'ar' ? statusBadge.ar : statusBadge.en}
+                      </span>
+                    </div>
+                    <p className="font-extrabold text-sm text-[#27345C] leading-snug">
+                      {ls.id} · {t(ls.title, language)}
+                    </p>
+                    <p className="text-[11px] text-[#27345C]/70">
+                      {ls.teachingVocab.map((v) => `${v.emoji} ${v.text}`).slice(0, 2).join(' · ')}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Review Units for This World */}
+            {l1VisibleReviews.length > 0 && (
+              <div className="pt-4 border-t border-[#27345C]/10 space-y-3">
+                <h4 className="text-sm font-extrabold text-[#8054D9]">
+                  {language === 'ar' ? 'وحدات المراجعة والتثبيت' : 'Spaced Review Units'}
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {l1VisibleReviews.map((rv) => (
+                    <div
+                      key={rv.id}
+                      className="p-3.5 rounded-2xl bg-[#F3E8FF]/60 border border-[#8054D9]/20 flex items-center justify-between gap-2"
+                    >
+                      <div>
+                        <p className="font-extrabold text-xs text-[#27345C]">{t(rv.title, language)}</p>
+                        <p className="text-[11px] text-[#27345C]/70 mt-0.5">
+                          {rv.lessonIds[0]} – {rv.lessonIds[rv.lessonIds.length - 1]} ({rv.lessonIds.length})
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const targetLs =
+                            l1VisibleLessons.find(
+                              (l) => rv.lessonIds.includes(l.id) && l1ProgressMap[l.id]?.status === 'needs-revision',
+                            ) || l1VisibleLessons.find((l) => l.id === rv.lessonIds[0]);
+                          if (targetLs) setActiveL1Lesson(targetLs);
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-[#8054D9] text-white text-xs font-extrabold cursor-pointer shrink-0"
+                      >
+                        {language === 'ar' ? 'مراجعة' : 'Review'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* =========================================
           TAB 1: DAILY LEARNING ADVENTURE + REVISION

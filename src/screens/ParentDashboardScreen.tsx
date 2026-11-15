@@ -29,11 +29,12 @@ import { CertificateModal } from '../components/CertificateModal';
 import { useNonoLand } from '../context/NonoLandContext';
 import { PARENT_OFFLINE_ACTIVITIES } from '../data/academyData';
 import { AGE_CURRICULUM_OUTCOMES } from '../data/deepCurriculum';
+import { ALL_LEVEL1_LESSONS, getLevel1LessonsBySubject } from '../data/level1Curriculum';
 import { OFFICIAL_YOUTUBE_CHANNEL } from '../data/funZoneData';
 import { LEARNING_WORLDS } from '../data/worlds';
 import { generateParentInsights } from '../engine/adaptiveEngine';
 import { AGE_GROUP_META, formatDate, formatNumber, SKILL_LABELS, t, UI_COPY } from '../i18n/translations';
-import { Certificate, SkillId, YouTubeCategory } from '../types/nonoland';
+import { Certificate, SecurityEventLog, SkillId, YouTubeCategory } from '../types/nonoland';
 import { soundEngine } from '../utils/soundEngine';
 
 function extractYouTubeId(input: string): string | null {
@@ -82,12 +83,17 @@ export const ParentDashboardScreen: React.FC = () => {
     toggleApproveVideo,
     toggleFeatureVideo,
     removeCuratedVideo,
+    authSession,
+    logoutParent,
+    logoutAllDevices,
   } = useNonoLand();
 
-  // Parental Gate Math Challenge
+  // Parental Gate Challenge (Real password when authenticated; math check in sample preview)
   const [gateUnlocked, setGateUnlocked] = useState(false);
   const [gateInput, setGateInput] = useState('');
   const [gateError, setGateError] = useState(false);
+  const [securityLogs, setSecurityLogs] = useState<SecurityEventLog[]>([]);
+  const [activeSessionsCount, setActiveSessionsCount] = useState<number>(0);
   const challenge = useMemo(() => ({ a: 7, b: 4, answer: 28 }), []);
 
   const [tab, setTab] = useState<'reports' | 'profiles' | 'controls' | 'offline' | 'youtube' | 'admin'>('reports');
@@ -114,8 +120,50 @@ export const ParentDashboardScreen: React.FC = () => {
     };
   }, []);
 
-  const handleGateSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    if (!gateUnlocked || !authSession.authenticated) return;
+    let cancelled = false;
+    fetch('/api/parent/security-logs', { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!cancelled && data) {
+          setSecurityLogs(data.logs || []);
+          setActiveSessionsCount(data.activeSessionsCount || 0);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [gateUnlocked, authSession.authenticated]);
+
+  const handleGateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (authSession.authenticated && authSession.csrfToken) {
+      try {
+        const res = await fetch('/api/parent/verify-password', {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-csrf-token': authSession.csrfToken,
+          },
+          body: JSON.stringify({ password: gateInput }),
+        });
+        if (res.ok) {
+          soundEngine.playSuccess();
+          setGateUnlocked(true);
+          setGateError(false);
+          return;
+        }
+      } catch {
+        // fail closed
+      }
+      soundEngine.playEncourage();
+      setGateError(true);
+      return;
+    }
+
     if (Number(gateInput.trim()) === challenge.answer) {
       soundEngine.playSuccess();
       setGateUnlocked(true);
@@ -137,25 +185,45 @@ export const ParentDashboardScreen: React.FC = () => {
             {t(UI_COPY.parent.gateTitle, language)}
           </h1>
           <p className="text-sm text-[#27345C]/75 mt-1">
-            {t(UI_COPY.parent.gateSubtitle, language)}
+            {authSession.authenticated
+              ? language === 'ar'
+                ? 'أدخل كلمة مرور حساب ولي الأمر للدخول للوحة التحكم'
+                : 'Enter your Parent Account password to unlock controls'
+              : t(UI_COPY.parent.gateSubtitle, language)}
           </p>
         </div>
 
-        <form onSubmit={handleGateSubmit} className="space-y-4">
-          <div className="p-4 rounded-2xl bg-[#FFF8E9] border border-[#27345C]/12 font-mono-num text-2xl font-extrabold text-[#27345C]">
-            {challenge.a} × {challenge.b} = ?
-          </div>
+        <form onSubmit={(e) => void handleGateSubmit(e)} className="space-y-4">
+          {!authSession.authenticated && (
+            <div className="p-4 rounded-2xl bg-[#FFF8E9] border border-[#27345C]/12 font-mono-num text-2xl font-extrabold text-[#27345C]">
+              {challenge.a} × {challenge.b} = ?
+            </div>
+          )}
           <input
-            type="number"
+            type={authSession.authenticated ? 'password' : 'number'}
             value={gateInput}
             onChange={(e) => setGateInput(e.target.value)}
-            placeholder={language === 'ar' ? 'اكتب الناتج' : 'Enter answer'}
+            placeholder={
+              authSession.authenticated
+                ? language === 'ar'
+                  ? 'كلمة مرور ولي الأمر'
+                  : 'Parent Password'
+                : language === 'ar'
+                  ? 'اكتب الناتج'
+                  : 'Enter answer'
+            }
             className="w-full h-12 px-4 rounded-2xl bg-white border-2 border-[#27345C]/15 focus:border-[#8054D9] outline-none text-center font-mono-num text-lg font-bold"
             required
           />
           {gateError && (
             <p className="text-xs font-bold text-[#FF4D6D]">
-              {language === 'ar' ? 'حاول مرة أخرى (تلميح: ٢٨)' : 'Try again!'}
+              {authSession.authenticated
+                ? language === 'ar'
+                  ? 'كلمة المرور غير صحيحة'
+                  : 'Incorrect password'
+                : language === 'ar'
+                  ? 'حاول مرة أخرى (تلميح: ٢٨)'
+                  : 'Try again!'}
             </p>
           )}
           <div className="flex gap-2">
@@ -266,6 +334,69 @@ export const ParentDashboardScreen: React.FC = () => {
               </p>
             </div>
           </div>
+
+          {/* Level 1 Curriculum Report (Calculated Strictly from Real Saved Progress) */}
+          {(() => {
+            const l1Map = activeChild.level1Progress || {};
+            const allValues = Object.values(l1Map);
+            const demonstrated = allValues.filter((p) => p.status === 'demonstrated').length;
+            const needsRev = allValues.filter((p) => p.status === 'needs-revision').length;
+            const inProg = allValues.filter((p) => p.status === 'learning' || p.status === 'practicing' || p.status === 'improving').length;
+            const recommended =
+              ALL_LEVEL1_LESSONS.find((l) => l1Map[l.id]?.status === 'needs-revision') ||
+              ALL_LEVEL1_LESSONS.find((l) => !l1Map[l.id] || l1Map[l.id].status !== 'demonstrated');
+
+            const domainRows = [
+              { id: 'arabic' as const, ar: 'العربية', en: 'Arabic', total: 28 },
+              { id: 'english' as const, ar: 'الإنجليزية', en: 'English', total: 26 },
+              { id: 'numbers' as const, ar: 'الأرقام', en: 'Numbers', total: 11 },
+              { id: 'colors' as const, ar: 'الألوان', en: 'Colors', total: 10 },
+            ];
+
+            return (
+              <div className="nono-card rounded-3xl p-6 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-extrabold text-[#27345C]">
+                      {language === 'ar'
+                        ? 'تقرير المستوى الأول (٧٥ درساً رسمياً)'
+                        : 'Level 1 Progress Report (75 Official Lessons)'}
+                    </h2>
+                    <p className="text-xs text-[#27345C]/70">
+                      {language === 'ar'
+                        ? `محسوب مباشرة من سجل الطفل المحفوظ · متقن: ${demonstrated} · قيد التعلّم: ${inProg} · يحتاج مراجعة: ${needsRev}`
+                        : `Calculated from real saved progress · Demonstrated: ${demonstrated} · In Progress: ${inProg} · Needs Revision: ${needsRev}`}
+                    </p>
+                  </div>
+                  {recommended && (
+                    <button
+                      type="button"
+                      onClick={() => navigate('academy')}
+                      className="px-4 py-2 rounded-xl bg-[#8054D9] text-white text-xs font-extrabold cursor-pointer"
+                    >
+                      {language === 'ar' ? `الدرس المقترح: ${recommended.id}` : `Next Recommended: ${recommended.id}`}
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                  {domainRows.map((dr) => {
+                    const lessonsInDom = getLevel1LessonsBySubject(dr.id);
+                    const done = lessonsInDom.filter((l) => l1Map[l.id]?.status === 'demonstrated').length;
+                    return (
+                      <div key={dr.id} className="p-3.5 rounded-2xl bg-[#FFF8E9] border border-[#27345C]/10">
+                        <p className="text-xs font-extrabold text-[#27345C]">
+                          {language === 'ar' ? dr.ar : dr.en}
+                        </p>
+                        <p className="text-2xl font-extrabold text-[#8054D9] font-mono-num mt-1">
+                          {done} / {dr.total}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Data-Backed Learning Insights + Skill Progress */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
@@ -704,12 +835,50 @@ export const ParentDashboardScreen: React.FC = () => {
               <li className="flex items-center gap-2">
                 <Check className="w-4 h-4 text-[#55D98B] shrink-0" />
                 <span>
-                  {language === 'ar'
-                    ? 'يُحفظ التقدم حالياً محلياً على جهازك؛ يمكن ربط Firebase/Backend لاحقاً.'
-                    : 'Progress persists locally on this device; cloud auth/database requires backend credential setup.'}
+                  {authSession.authenticated && authSession.user
+                    ? language === 'ar'
+                      ? `متصل بحساب الأهل الموثّق (${authSession.user.email}) · جلسات نشطة: ${activeSessionsCount}`
+                      : `Signed in as ${authSession.user.email} · Active sessions: ${activeSessionsCount}`
+                    : language === 'ar'
+                      ? 'في وضع المعاينة المحلي؛ سجّل حساب الأهل لتفعيل المزامنة وحماية الجلسات على الخادم.'
+                      : 'Running in local preview; register a Parent Account to activate server-backed auth & audit logs.'}
                 </span>
               </li>
             </ul>
+
+            {authSession.authenticated && (
+              <div className="space-y-3 pt-2 border-t border-[#27345C]/10">
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void logoutParent()}
+                    className="px-3.5 py-2 rounded-xl bg-slate-100 text-[#27345C] text-xs font-extrabold cursor-pointer"
+                  >
+                    {language === 'ar' ? 'تسجيل الخروج' : 'Sign Out'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void logoutAllDevices()}
+                    className="px-3.5 py-2 rounded-xl bg-[#FF9360]/18 text-[#27345C] text-xs font-extrabold cursor-pointer"
+                  >
+                    {language === 'ar' ? 'تسجيل الخروج من جميع الأجهزة' : 'Log Out All Devices'}
+                  </button>
+                </div>
+                {securityLogs.length > 0 && (
+                  <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                    <p className="text-xs font-extrabold text-[#27345C]/70">
+                      {language === 'ar' ? 'سجل الأمان الأخير' : 'Recent Account Security Log'}
+                    </p>
+                    {securityLogs.slice(0, 6).map((lg) => (
+                      <div key={lg.id} className="p-2 rounded-xl bg-[#FFF8E9] text-[11px] flex justify-between gap-2">
+                        <span className="font-bold text-[#27345C]">{lg.eventType}</span>
+                        <span className="text-[#27345C]/65 truncate">{lg.summary}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="pt-4 border-t border-[#27345C]/10">
               <button

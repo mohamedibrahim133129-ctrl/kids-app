@@ -28,6 +28,8 @@ import {
 import { soundEngine } from '../utils/soundEngine';
 import { CertificateModal } from './CertificateModal';
 
+import { useNonoLand } from '../context/NonoLandContext';
+
 interface AdminOverviewResponse {
   examConfig: ExamConfig;
   customLessons: CmsLessonRecord[];
@@ -38,6 +40,7 @@ interface AdminOverviewResponse {
 }
 
 export const AdminCmsPanel: React.FC<{ language: Language }> = ({ language }) => {
+  const { authSession } = useNonoLand();
   const [pin, setPin] = useState('');
   const [unlockedPin, setUnlockedPin] = useState<string | null>(null);
   const [authError, setAuthError] = useState('');
@@ -76,16 +79,30 @@ export const AdminCmsPanel: React.FC<{ language: Language }> = ({ language }) =>
   const [qLessonEn, setQLessonEn] = useState('');
   const [qAges, setQAges] = useState<AgeGroupId[]>(['5-6', '7', '8']);
 
+  const adminHeaders = (pinVal: string, json = false): Record<string, string> => {
+    const h: Record<string, string> = { 'x-admin-pin': pinVal };
+    if (json) h['Content-Type'] = 'application/json';
+    if (authSession.csrfToken) h['x-csrf-token'] = authSession.csrfToken;
+    return h;
+  };
+
   const fetchOverview = async (adminPin: string) => {
     setLoading(true);
     setAuthError('');
     try {
       const res = await fetch('/api/admin/overview', {
-        headers: { 'x-admin-pin': adminPin },
+        credentials: 'include',
+        headers: adminHeaders(adminPin),
       });
       if (!res.ok) {
         setAuthError(
-          language === 'ar' ? 'رمز الإدارة غير صحيح' : 'Invalid Admin PIN',
+          res.status === 403
+            ? language === 'ar'
+              ? 'حساب الأهل لا يملك صلاحيات الإدارة (RBAC)'
+              : 'Parent account does not have Admin role (403 Forbidden)'
+            : language === 'ar'
+              ? 'رمز الإدارة غير صحيح'
+              : 'Invalid Admin PIN',
         );
         setLoading(false);
         return false;
@@ -124,10 +141,8 @@ export const AdminCmsPanel: React.FC<{ language: Language }> = ({ language }) =>
     if (!unlockedPin) return;
     const res = await fetch('/api/admin/exam-config', {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-admin-pin': unlockedPin,
-      },
+      credentials: 'include',
+      headers: adminHeaders(unlockedPin, true),
       body: JSON.stringify({
         examPriceEgp: Number(priceEgp),
         passingPercentage: Number(passPct),
@@ -164,10 +179,8 @@ export const AdminCmsPanel: React.FC<{ language: Language }> = ({ language }) =>
     };
     const res = await fetch('/api/admin/lessons', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-admin-pin': unlockedPin,
-      },
+      credentials: 'include',
+      headers: adminHeaders(unlockedPin, true),
       body: JSON.stringify(payload),
     });
     if (res.ok) {
@@ -189,7 +202,8 @@ export const AdminCmsPanel: React.FC<{ language: Language }> = ({ language }) =>
     if (!unlockedPin) return;
     await fetch(`/api/admin/lessons/${ls.id}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', 'x-admin-pin': unlockedPin },
+      credentials: 'include',
+      headers: adminHeaders(unlockedPin, true),
       body: JSON.stringify({ published: !ls.published }),
     });
     await fetchOverview(unlockedPin);
@@ -199,7 +213,8 @@ export const AdminCmsPanel: React.FC<{ language: Language }> = ({ language }) =>
     if (!unlockedPin) return;
     await fetch(`/api/admin/lessons/${id}`, {
       method: 'DELETE',
-      headers: { 'x-admin-pin': unlockedPin },
+      credentials: 'include',
+      headers: adminHeaders(unlockedPin),
     });
     await fetchOverview(unlockedPin);
   };
@@ -235,7 +250,8 @@ export const AdminCmsPanel: React.FC<{ language: Language }> = ({ language }) =>
     };
     const res = await fetch('/api/admin/questions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-admin-pin': unlockedPin },
+      credentials: 'include',
+      headers: adminHeaders(unlockedPin, true),
       body: JSON.stringify(payload),
     });
     if (res.ok) {
@@ -256,7 +272,8 @@ export const AdminCmsPanel: React.FC<{ language: Language }> = ({ language }) =>
     if (!unlockedPin) return;
     await fetch(`/api/admin/questions/${q.id}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', 'x-admin-pin': unlockedPin },
+      credentials: 'include',
+      headers: adminHeaders(unlockedPin, true),
       body: JSON.stringify({ published: q.published === false }),
     });
     await fetchOverview(unlockedPin);
@@ -266,7 +283,8 @@ export const AdminCmsPanel: React.FC<{ language: Language }> = ({ language }) =>
     if (!unlockedPin) return;
     await fetch(`/api/admin/questions/${id}`, {
       method: 'DELETE',
-      headers: { 'x-admin-pin': unlockedPin },
+      credentials: 'include',
+      headers: adminHeaders(unlockedPin),
     });
     await fetchOverview(unlockedPin);
   };
@@ -275,7 +293,8 @@ export const AdminCmsPanel: React.FC<{ language: Language }> = ({ language }) =>
     if (!unlockedPin) return;
     await fetch(`/api/admin/certificates/${encodeURIComponent(cert.uniqueCode)}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', 'x-admin-pin': unlockedPin },
+      credentials: 'include',
+      headers: adminHeaders(unlockedPin, true),
       body: JSON.stringify({ revoked: !cert.revoked }),
     });
     await fetchOverview(unlockedPin);

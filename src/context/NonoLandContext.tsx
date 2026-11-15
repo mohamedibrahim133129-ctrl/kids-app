@@ -20,6 +20,7 @@ import {
   ExamAttemptSummary,
   Language,
   LearningAttempt,
+  Level1LessonProgress,
   LocalizedText,
   ParentAccount,
   ParentSettings,
@@ -29,6 +30,12 @@ import {
   WorldId,
 } from '../types/nonoland';
 import { soundEngine } from '../utils/soundEngine';
+
+export interface AuthSessionState {
+  authenticated: boolean;
+  user: ParentAccount | null;
+  csrfToken: string | null;
+}
 
 const STORAGE_KEY = 'nonoland_universe_state_v1';
 
@@ -90,6 +97,10 @@ interface NonoLandContextValue {
   setLanguage: (lang: Language) => void;
   parentAccount: ParentAccount | null;
   setParentAccount: (account: ParentAccount) => void;
+  authSession: AuthSessionState;
+  refreshAuthSession: () => Promise<void>;
+  logoutParent: () => Promise<void>;
+  logoutAllDevices: () => Promise<void>;
   parentSettings: ParentSettings;
   updateParentSettings: (patch: Partial<ParentSettings>) => void;
   subscription: SubscriptionState;
@@ -106,7 +117,7 @@ interface NonoLandContextValue {
     interests: string[];
     companionId: string;
     companionScarfColor: string;
-  }) => ChildProfile;
+  }) => Promise<ChildProfile>;
   updateChildProfile: (childId: string, patch: Partial<ChildProfile>) => void;
   selectedWorldId: WorldId;
   selectedActivityId: string;
@@ -148,6 +159,7 @@ interface NonoLandContextValue {
     isIndependent?: boolean;
     isRetentionReview?: boolean;
   }) => void;
+  recordLevel1Progress: (progress: Level1LessonProgress, starsAdd?: number, minutesAdd?: number) => void;
   completeDeepLesson: (input: {
     lessonId: string;
     conceptId: string;
@@ -179,9 +191,58 @@ export const NonoLandProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [lastNewlyIssuedCert, setLastNewlyIssuedCert] = useState<Certificate | null>(null);
   const [lastAssessment, setLastAssessment] = useState<AssessmentResult | null>(null);
   const [showCelebration, setShowCelebration] = useState(false);
+  const [authSession, setAuthSession] = useState<AuthSessionState>({
+    authenticated: false,
+    user: null,
+    csrfToken: null,
+  });
   const [browserOnline, setBrowserOnline] = useState(
     typeof navigator !== 'undefined' ? navigator.onLine : true,
   );
+
+  const refreshAuthSession = async () => {
+    try {
+      const res = await fetch('/api/auth/me', { credentials: 'include' });
+      if (!res.ok) return;
+      const data = (await res.json()) as {
+        authenticated: boolean;
+        user: ParentAccount | null;
+        csrfToken: string | null;
+      };
+      setAuthSession({
+        authenticated: Boolean(data.authenticated),
+        user: data.user || null,
+        csrfToken: data.csrfToken || null,
+      });
+      if (data.authenticated && data.user) {
+        setPersisted((prev) => ({ ...prev, parentAccount: data.user }));
+        const chRes = await fetch('/api/children', { credentials: 'include' });
+        if (chRes.ok) {
+          const chData = (await chRes.json()) as { children?: ChildProfile[] };
+          if (Array.isArray(chData.children) && chData.children.length > 0) {
+            setPersisted((prev) => {
+              const serverIds = new Set(chData.children!.map((c) => c.id));
+              const keptSamples = prev.children.filter((c) => !serverIds.has(c.id) && c.id.startsWith('demo-'));
+              const merged = [...chData.children!, ...keptSamples];
+              return {
+                ...prev,
+                children: merged,
+                activeChildId: merged.some((c) => c.id === prev.activeChildId)
+                  ? prev.activeChildId
+                  : chData.children![0].id,
+              };
+            });
+          }
+        }
+      }
+    } catch {
+      // Offline / dev fallback
+    }
+  };
+
+  useEffect(() => {
+    void refreshAuthSession();
+  }, []);
 
   const activeChild = useMemo(() => {
     return (
@@ -268,7 +329,66 @@ export const NonoLandProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setPersisted((prev) => ({ ...prev, activeChildId: childId }));
   };
 
-  const createChildProfile: NonoLandContextValue['createChildProfile'] = (input) => {
+  const logoutParent = async () => {
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include',
+        headers: authSession.csrfToken ? { 'x-csrf-token': authSession.csrfToken } : {},
+      });
+    } catch {
+      // ignore
+    }
+    setAuthSession({ authenticated: false, user: null, csrfToken: null });
+    setPersisted((prev) => ({
+      ...prev,
+      parentAccount: {
+        id: 'parent-demo-1',
+        name: 'عائلة نونو',
+        email: 'family@nonoland.local',
+        createdAt: new Date().toISOString(),
+        isDemoMode: true,
+      },
+    }));
+  };
+
+  const logoutAllDevices = async () => {
+    try {
+      await fetch('/api/auth/logout-all', {
+        method: 'POST',
+        credentials: 'include',
+        headers: authSession.csrfToken ? { 'x-csrf-token': authSession.csrfToken } : {},
+      });
+    } catch {
+      // ignore
+    }
+    setAuthSession({ authenticated: false, user: null, csrfToken: null });
+  };
+
+  const createChildProfile: NonoLandContextValue['createChildProfile'] = async (input) => {
+    if (authSession.authenticated && authSession.csrfToken) {
+      const res = await fetch('/api/children', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-csrf-token': authSession.csrfToken,
+        },
+        body: JSON.stringify(input),
+      });
+      const data = (await res.json()) as { child?: ChildProfile; error?: string };
+      if (!res.ok || !data.child) {
+        throw new Error(data.error || 'Failed to create child profile');
+      }
+      setPersisted((prev) => ({
+        ...prev,
+        parentSettings: { ...prev.parentSettings, language: input.language },
+        children: [data.child!, ...prev.children],
+        activeChildId: data.child!.id,
+      }));
+      return data.child;
+    }
+
     const newChild: ChildProfile = {
       id: `child-${Date.now()}`,
       displayName: input.displayName.trim() || (input.language === 'ar' ? 'بطل نونو' : 'Explorer'),
@@ -311,6 +431,7 @@ export const NonoLandProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       completedMissionsToday: [],
       totalLearningMinutes: 0,
       downloadedWorldIds: ['arabic-letters', 'colors-shapes'],
+      level1Progress: {},
     };
 
     setPersisted((prev) => ({
@@ -327,6 +448,17 @@ export const NonoLandProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       ...prev,
       children: prev.children.map((c) => (c.id === childId ? { ...c, ...patch } : c)),
     }));
+    if (authSession.authenticated && authSession.csrfToken && !childId.startsWith('demo-')) {
+      void fetch(`/api/children/${encodeURIComponent(childId)}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-csrf-token': authSession.csrfToken,
+        },
+        body: JSON.stringify(patch),
+      }).catch(() => {});
+    }
   };
 
   const recordGameAttempt: NonoLandContextValue['recordGameAttempt'] = (input) => {
@@ -802,6 +934,37 @@ export const NonoLandProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }));
   };
 
+  const recordLevel1Progress: NonoLandContextValue['recordLevel1Progress'] = (
+    progress,
+    starsAdd = 0,
+    minutesAdd = 0,
+  ) => {
+    setPersisted((prev) => ({
+      ...prev,
+      children: prev.children.map((c) => {
+        if (c.id !== activeChild.id) return c;
+        const prevMap = c.level1Progress || {};
+        const existing = prevMap[progress.lessonId];
+        const mergedActs = Array.from(
+          new Set([...(existing?.completedActivityIds || []), ...progress.completedActivityIds]),
+        );
+        return {
+          ...c,
+          stars: c.stars + starsAdd,
+          totalLearningMinutes: c.totalLearningMinutes + minutesAdd,
+          level1Progress: {
+            ...prevMap,
+            [progress.lessonId]: {
+              ...progress,
+              startedAt: existing?.startedAt || progress.startedAt,
+              completedActivityIds: mergedActs,
+            },
+          },
+        };
+      }),
+    }));
+  };
+
   const recordExamCompletion: NonoLandContextValue['recordExamCompletion'] = (
     summary,
     issuedCert,
@@ -915,6 +1078,10 @@ export const NonoLandProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setLanguage,
         parentAccount: persisted.parentAccount,
         setParentAccount,
+        authSession,
+        refreshAuthSession,
+        logoutParent,
+        logoutAllDevices,
         parentSettings: persisted.parentSettings,
         updateParentSettings,
         subscription: persisted.subscription,
@@ -949,6 +1116,7 @@ export const NonoLandProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         syncOfflineQueue,
         resetAllData,
         recordConceptInteraction,
+        recordLevel1Progress,
         completeDeepLesson,
         recordExamCompletion,
         updateCharacterOutfit,

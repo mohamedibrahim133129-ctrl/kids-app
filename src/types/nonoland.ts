@@ -203,12 +203,143 @@ export interface LocalizedText {
   en: string;
 }
 
+export type UserRole =
+  | 'parent'
+  | 'super_admin'
+  | 'content_admin'
+  | 'curriculum_manager'
+  | 'support_agent'
+  | 'finance_admin';
+
 export interface ParentAccount {
   id: string;
   name: string;
   email: string;
+  normalizedEmail?: string;
+  role?: UserRole;
+  emailVerified?: boolean;
+  policyVersion?: string;
+  termsAcceptedAt?: string;
   createdAt: string;
   isDemoMode: boolean;
+}
+
+export interface SecurityEventLog {
+  id: string;
+  eventType:
+    | 'AUTH_REGISTER'
+    | 'AUTH_LOGIN_SUCCESS'
+    | 'AUTH_LOGIN_FAIL'
+    | 'AUTH_LOCKOUT'
+    | 'EMAIL_VERIFIED'
+    | 'PASSWORD_RESET'
+    | 'LOGOUT_ALL'
+    | 'PARENT_GATE_FAIL'
+    | 'PAYMENT_VERIFIED'
+    | 'EXAM_COMPLETED'
+    | 'CERT_ISSUED'
+    | 'ADMIN_ACTION'
+    | 'ACCESS_DENIED';
+  actorId?: string;
+  role?: string;
+  ip?: string;
+  summary: string;
+  createdAt: string;
+}
+
+export type Level1Subject = 'arabic' | 'english' | 'numbers' | 'colors';
+
+export type Level1LessonStatus =
+  | 'not-started'
+  | 'learning'
+  | 'practicing'
+  | 'improving'
+  | 'demonstrated'
+  | 'needs-revision';
+
+export interface Level1VocabItem {
+  id: string;
+  text: string;
+  secondaryText?: string;
+  emoji: string;
+  audioStatus: 'speech_synthesis_fallback' | 'verified_audio';
+}
+
+export type Level1ActivityFormat =
+  | 'tap-select'
+  | 'listen-select'
+  | 'match-picture'
+  | 'match-case'
+  | 'find-hidden'
+  | 'sort-drag'
+  | 'count-collect'
+  | 'color-picture'
+  | 'memory-challenge'
+  | 'visual-pattern'
+  | 'independent-challenge';
+
+export interface Level1LessonDefinition {
+  id: string; // e.g., AR01..AR28, EN01..EN26, NM01..NM11, CL01..CL10
+  subject: Level1Subject;
+  level: 1;
+  ageRange: '3-4';
+  unit: string;
+  order: number;
+  title: LocalizedText;
+  learningObjective: LocalizedText;
+  characterIntro: LocalizedText;
+  explanation: LocalizedText;
+  targetSymbol: string;
+  secondarySymbol?: string;
+  colorHex?: string;
+  numberValue?: number;
+  teachingVocab: Level1VocabItem[];
+  unseenVocab: Level1VocabItem[];
+  activityFormats: Level1ActivityFormat[];
+  prerequisiteIds: string[];
+  suggestedMinutes: number;
+  revisionIntervalHours: number;
+  audioStatus: 'speech_synthesis_fallback' | 'verified_audio';
+}
+
+export interface Level1QuestionItem {
+  id: string; // e.g., AR01-Q01 .. AR01-Q10
+  lessonId: string;
+  subject: Level1Subject;
+  qType:
+    | 'visual-id'
+    | 'audio-id'
+    | 'picture-match'
+    | 'initial-sound'
+    | 'finder'
+    | 'letter-picture'
+    | 'listen-choose'
+    | 'odd-one-out'
+    | 'new-example'
+    | 'independent';
+  prompt: LocalizedText;
+  audioText?: string;
+  audioLang?: Language;
+  visualCue?: string;
+  options: Array<{ id: string; label: LocalizedText; visual: string; colorHex?: string }>;
+  correctOptionId: string;
+  feedbackOnWrong: LocalizedText;
+}
+
+export interface Level1LessonProgress {
+  lessonId: string;
+  subject: Level1Subject;
+  startedAt: string;
+  explanationViewed: boolean;
+  completedActivityIds: string[];
+  correctCount: number;
+  mistakesCount: number;
+  lastScore?: number;
+  lastTotal?: number;
+  attemptsCount: number;
+  status: Level1LessonStatus;
+  lastPracticedAt: string;
+  revisionDueAt?: string;
 }
 
 export interface ParentSettings {
@@ -306,6 +437,7 @@ export interface ChildProfile {
   certificates: Certificate[];
   skillProgress: Record<SkillId, SkillProgress>;
   conceptMastery?: Record<string, ConceptRecord>;
+  level1Progress?: Record<string, Level1LessonProgress>;
   completedDeepLessons?: string[];
   examHistory?: ExamAttemptSummary[];
   characterOutfits?: Record<string, CharacterOutfit>;

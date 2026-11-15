@@ -5,8 +5,12 @@ import {
   ArrowRight,
   Check,
   Compass,
+  Eye,
+  EyeOff,
+  KeyRound,
   Languages,
   Lock,
+  MailCheck,
   Plus,
   Sparkles,
   UserCheck,
@@ -18,6 +22,13 @@ import { CHARACTER_COMPANIONS } from '../data/rewardsAndRoom';
 import { AGE_GROUP_META, t, UI_COPY } from '../i18n/translations';
 import { AgeGroupId, Language } from '../types/nonoland';
 import { soundEngine } from '../utils/soundEngine';
+import {
+  POLICY_VERSION,
+  validateChildProfileInput,
+  validateEmail,
+  validateParentName,
+  validatePassword,
+} from '../utils/validation';
 
 export const SplashScreen: React.FC = () => {
   const { navigate, language, setLanguage, childrenList, selectChild } = useNonoLand();
@@ -258,28 +269,205 @@ export const OnboardingScreen: React.FC = () => {
 };
 
 export const ParentAuthScreen: React.FC = () => {
-  const { navigate, language, parentAccount, setParentAccount } = useNonoLand();
-  const [mode, setMode] = useState<'register' | 'login'>('register');
-  const [name, setName] = useState(parentAccount?.name || '');
-  const [email, setEmail] = useState(parentAccount?.email || '');
+  const { navigate, language, parentAccount, refreshAuthSession, authSession } = useNonoLand();
+  const [mode, setMode] = useState<'register' | 'login' | 'forgot' | 'reset'>('register');
+  const [name, setName] = useState(parentAccount?.isDemoMode ? '' : parentAccount?.name || '');
+  const [email, setEmail] = useState(parentAccount?.isDemoMode ? '' : parentAccount?.email || '');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPw, setShowPw] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [resetToken, setResetToken] = useState('');
+  const [verifyTokenInput, setVerifyTokenInput] = useState('');
+  const [devNotice, setDevNotice] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const pwEval = validatePassword(password, email, name);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    soundEngine.playSuccess();
-    setParentAccount({
-      id: `parent-${Date.now()}`,
-      name: name.trim() || (language === 'ar' ? 'ولي الأمر' : 'Parent'),
-      email: email.trim() || 'parent@nonoland.local',
-      createdAt: new Date().toISOString(),
-      isDemoMode: true,
-    });
-    navigate('create-child');
+    setErrorMsg('');
+    setDevNotice('');
+
+    if (mode === 'register') {
+      const nCheck = validateParentName(name);
+      if (!nCheck.ok) return setErrorMsg(nCheck.error || 'Invalid parent name');
+      const eCheck = validateEmail(email);
+      if (!eCheck.ok) return setErrorMsg(eCheck.error || 'Invalid email');
+      if (!pwEval.ok) return setErrorMsg(pwEval.error || 'Weak password');
+      if (password !== confirmPassword) {
+        return setErrorMsg(
+          language === 'ar' ? 'كلمتا المرور غير متطابقتين.' : 'Passwords do not match.',
+        );
+      }
+      if (!termsAccepted) {
+        return setErrorMsg(
+          language === 'ar'
+            ? 'يرجى الموافقة الصريحة على سياسة الخصوصية وشروط الاستخدام.'
+            : 'Please accept the Privacy Policy and Terms of Use.',
+        );
+      }
+
+      setSubmitting(true);
+      try {
+        const res = await fetch('/api/auth/register', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            displayName: name,
+            email,
+            password,
+            termsAccepted: true,
+            policyVersion: POLICY_VERSION,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setErrorMsg(data.error || 'Registration failed');
+          soundEngine.playEncourage();
+          return;
+        }
+        soundEngine.playSuccess();
+        await refreshAuthSession();
+        if (data.devVerificationToken) {
+          setVerifyTokenInput(data.devVerificationToken);
+          setDevNotice(
+            language === 'ar'
+              ? `تم إنشاء الحساب! رمز التحقق التجريبي للبريد: ${data.devVerificationToken}`
+              : `Account created! Dev email verification token: ${data.devVerificationToken}`,
+          );
+        } else {
+          navigate('create-child');
+        }
+      } catch {
+        setErrorMsg(language === 'ar' ? 'تعذر الاتصال بالخادم.' : 'Network error.');
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
+    if (mode === 'login') {
+      const eCheck = validateEmail(email);
+      if (!eCheck.ok) return setErrorMsg(eCheck.error || 'Invalid email');
+      if (!password) {
+        return setErrorMsg(language === 'ar' ? 'أدخل كلمة المرور.' : 'Enter your password.');
+      }
+      setSubmitting(true);
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setErrorMsg(data.error || 'Invalid email or password');
+          soundEngine.playEncourage();
+          return;
+        }
+        soundEngine.playSuccess();
+        await refreshAuthSession();
+        navigate('home');
+      } catch {
+        setErrorMsg(language === 'ar' ? 'تعذر الاتصال بالخادم.' : 'Network error.');
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
+    if (mode === 'forgot') {
+      const eCheck = validateEmail(email);
+      if (!eCheck.ok) return setErrorMsg(eCheck.error || 'Invalid email');
+      setSubmitting(true);
+      try {
+        const res = await fetch('/api/auth/forgot-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email }),
+        });
+        const data = await res.json();
+        setDevNotice(
+          data.devResetToken
+            ? `${data.message} (Dev token: ${data.devResetToken})`
+            : data.message,
+        );
+        if (data.devResetToken) setResetToken(data.devResetToken);
+        setMode('reset');
+      } catch {
+        setErrorMsg(language === 'ar' ? 'تعذر الاتصال بالخادم.' : 'Network error.');
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
+    if (mode === 'reset') {
+      if (!resetToken.trim()) {
+        return setErrorMsg(language === 'ar' ? 'أدخل رمز استعادة كلمة المرور.' : 'Enter reset token.');
+      }
+      if (!pwEval.ok) return setErrorMsg(pwEval.error || 'Weak password');
+      setSubmitting(true);
+      try {
+        const res = await fetch('/api/auth/reset-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: resetToken.trim(), newPassword: password }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setErrorMsg(data.error || 'Reset failed');
+          return;
+        }
+        soundEngine.playSuccess();
+        setPassword('');
+        setMode('login');
+        setDevNotice(
+          language === 'ar'
+            ? 'تم تحديث كلمة المرور بنجاح وتسجيل الخروج من جميع الجلسات السابقة.'
+            : 'Password updated cleanly and all prior sessions revoked.',
+        );
+      } catch {
+        setErrorMsg(language === 'ar' ? 'تعذر الاتصال بالخادم.' : 'Network error.');
+      } finally {
+        setSubmitting(false);
+      }
+    }
+  };
+
+  const handleVerifyEmail = async () => {
+    if (!verifyTokenInput.trim()) return;
+    setSubmitting(true);
+    setErrorMsg('');
+    try {
+      const res = await fetch('/api/auth/verify-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: verifyTokenInput.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setErrorMsg(data.error || 'Verification failed');
+        return;
+      }
+      soundEngine.playSuccess();
+      await refreshAuthSession();
+      navigate('create-child');
+    } catch {
+      setErrorMsg(language === 'ar' ? 'تعذر التحقق الآن.' : 'Verification request failed.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
     <div className="min-h-screen bg-[#FFF8E9] flex items-center justify-center p-4 sm:p-6">
-      <div className="w-full max-w-lg nono-card rounded-3xl p-6 sm:p-8">
-        <div className="flex items-center justify-between mb-6">
+      <div className="w-full max-w-lg nono-card rounded-3xl p-6 sm:p-8 space-y-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
             <span className="w-10 h-10 rounded-xl bg-[#27345C] text-[#FFD84D] flex items-center justify-center">
               <UserCheck className="w-5 h-5" />
@@ -288,21 +476,34 @@ export const ParentAuthScreen: React.FC = () => {
               <h2 className="text-xl font-extrabold text-[#27345C]">
                 {mode === 'register'
                   ? language === 'ar'
-                    ? 'إنشاء حساب الأهل'
-                    : 'Parent Registration'
-                  : language === 'ar'
-                    ? 'تسجيل دخول الأهل'
-                    : 'Parent Login'}
+                    ? 'إنشاء حساب الأهل الآمن'
+                    : 'Secure Parent Registration'
+                  : mode === 'login'
+                    ? language === 'ar'
+                      ? 'تسجيل دخول الأهل'
+                      : 'Parent Login'
+                    : mode === 'forgot'
+                      ? language === 'ar'
+                        ? 'استعادة كلمة المرور'
+                        : 'Forgot Password'
+                      : language === 'ar'
+                        ? 'تعيين كلمة مرور جديدة'
+                        : 'Reset Password'}
               </h2>
               <p className="text-xs text-[#27345C]/65">
-                {language === 'ar' ? 'حفظ محلي آمن على جهازك (بدون جمع بيانات زائدة)' : 'Saved locally with minimal data collection'}
+                {language === 'ar'
+                  ? 'جلسة مشفرة محمية بـ HttpOnly & CSRF على الخادم'
+                  : 'Server-validated auth · Scrypt + HttpOnly Session'}
               </p>
             </div>
           </div>
           <div className="flex gap-1 bg-[#27345C]/8 p-1 rounded-xl">
             <button
               type="button"
-              onClick={() => setMode('register')}
+              onClick={() => {
+                setMode('register');
+                setErrorMsg('');
+              }}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer ${
                 mode === 'register' ? 'bg-white text-[#27345C] shadow-sm' : 'text-[#27345C]/65'
               }`}
@@ -311,7 +512,10 @@ export const ParentAuthScreen: React.FC = () => {
             </button>
             <button
               type="button"
-              onClick={() => setMode('login')}
+              onClick={() => {
+                setMode('login');
+                setErrorMsg('');
+              }}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer ${
                 mode === 'login' ? 'bg-white text-[#27345C] shadow-sm' : 'text-[#27345C]/65'
               }`}
@@ -321,7 +525,56 @@ export const ParentAuthScreen: React.FC = () => {
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        {authSession.authenticated && authSession.user && !authSession.user.emailVerified && (
+          <div className="p-4 rounded-2xl bg-[#E5F6FF] border border-[#39BDF2]/40 space-y-2.5 text-xs">
+            <div className="flex items-center gap-2 font-extrabold text-[#27345C]">
+              <MailCheck className="w-4 h-4 text-[#8054D9]" />
+              <span>
+                {language === 'ar'
+                  ? 'تأكيد البريد الإلكتروني لإكمال تفعيل الأمان:'
+                  : 'Verify your email address to activate full recovery:'}
+              </span>
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={verifyTokenInput}
+                onChange={(e) => setVerifyTokenInput(e.target.value)}
+                placeholder="Verification token"
+                className="flex-1 h-10 px-3 rounded-xl bg-white border border-[#27345C]/15 font-mono-num"
+              />
+              <button
+                type="button"
+                disabled={submitting}
+                onClick={() => void handleVerifyEmail()}
+                className="px-4 h-10 rounded-xl bg-[#55D98B] text-[#27345C] font-extrabold cursor-pointer"
+              >
+                {language === 'ar' ? 'تأكيد' : 'Verify'}
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate('create-child')}
+              className="underline font-bold text-[#8054D9] cursor-pointer"
+            >
+              {language === 'ar' ? 'أو المتابعة لإضافة طفل الآن' : 'Or continue to Create Child Profile'}
+            </button>
+          </div>
+        )}
+
+        {devNotice && (
+          <div className="p-3 rounded-2xl bg-[#E2F9EC] border border-[#55D98B] text-xs font-bold text-[#27345C] break-all">
+            {devNotice}
+          </div>
+        )}
+
+        {errorMsg && (
+          <div className="p-3 rounded-2xl bg-[#FF4D6D]/12 border border-[#FF4D6D]/30 text-xs font-bold text-[#FF4D6D]">
+            {errorMsg}
+          </div>
+        )}
+
+        <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
           {mode === 'register' && (
             <div>
               <label className="block text-sm font-bold mb-1.5">
@@ -330,6 +583,8 @@ export const ParentAuthScreen: React.FC = () => {
               <input
                 type="text"
                 required
+                minLength={2}
+                maxLength={80}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder={language === 'ar' ? 'مثال: أم عمر / أحمد' : 'e.g. Sarah'}
@@ -338,35 +593,173 @@ export const ParentAuthScreen: React.FC = () => {
             </div>
           )}
 
-          <div>
-            <label className="block text-sm font-bold mb-1.5">
-              {language === 'ar' ? 'البريد الإلكتروني للعائلة' : 'Family Email'}
-            </label>
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="family@example.com"
-              className="w-full h-12 px-4 rounded-2xl bg-[#FFF8E9] border-2 border-[#27345C]/12 focus:border-[#8054D9] outline-none font-semibold"
-            />
-          </div>
+          {(mode === 'register' || mode === 'login' || mode === 'forgot') && (
+            <div>
+              <label className="block text-sm font-bold mb-1.5">
+                {language === 'ar' ? 'البريد الإلكتروني للعائلة' : 'Family Email'}
+              </label>
+              <input
+                type="email"
+                required
+                maxLength={254}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="family@example.com"
+                className="w-full h-12 px-4 rounded-2xl bg-[#FFF8E9] border-2 border-[#27345C]/12 focus:border-[#8054D9] outline-none font-semibold"
+              />
+            </div>
+          )}
+
+          {mode === 'reset' && (
+            <div>
+              <label className="block text-sm font-bold mb-1.5">
+                {language === 'ar' ? 'رمز الاستعادة' : 'Reset Token'}
+              </label>
+              <input
+                type="text"
+                required
+                value={resetToken}
+                onChange={(e) => setResetToken(e.target.value)}
+                placeholder="Token"
+                className="w-full h-12 px-4 rounded-2xl bg-[#FFF8E9] border-2 border-[#27345C]/12 focus:border-[#8054D9] outline-none font-mono-num"
+              />
+            </div>
+          )}
+
+          {(mode === 'register' || mode === 'login' || mode === 'reset') && (
+            <div>
+              <label className="block text-sm font-bold mb-1.5">
+                {language === 'ar'
+                  ? mode === 'reset'
+                    ? 'كلمة المرور الجديدة (١٢ حرفاً فأكثر)'
+                    : 'كلمة المرور'
+                  : mode === 'reset'
+                    ? 'New Password (min 12 chars)'
+                    : 'Password'}
+              </label>
+              <div className="relative">
+                <input
+                  type={showPw ? 'text' : 'password'}
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••••••"
+                  className="w-full h-12 px-4 pe-12 rounded-2xl bg-[#FFF8E9] border-2 border-[#27345C]/12 focus:border-[#8054D9] outline-none font-semibold"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPw((v) => !v)}
+                  aria-label="Toggle password visibility"
+                  className="absolute inset-y-0 end-2 px-2 flex items-center text-[#27345C]/65 cursor-pointer"
+                >
+                  {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              {(mode === 'register' || mode === 'reset') && password.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  <div className="h-1.5 rounded-full bg-slate-200 overflow-hidden">
+                    <div
+                      className={`h-full transition-all ${
+                        pwEval.strength === 'strong'
+                          ? 'w-full bg-[#55D98B]'
+                          : pwEval.strength === 'fair'
+                            ? 'w-2/3 bg-[#FFD84D]'
+                            : 'w-1/3 bg-[#FF4D6D]'
+                      }`}
+                    />
+                  </div>
+                  <p className="text-[11px] font-bold text-[#27345C]/70">
+                    {pwEval.ok
+                      ? language === 'ar'
+                        ? `قوة كلمة المرور: ${pwEval.strength === 'strong' ? 'قوية جداً' : 'مقبولة'}`
+                        : `Password strength: ${pwEval.strength}`
+                      : pwEval.error}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {mode === 'register' && (
+            <>
+              <div>
+                <label className="block text-sm font-bold mb-1.5">
+                  {language === 'ar' ? 'تأكيد كلمة المرور' : 'Confirm Password'}
+                </label>
+                <input
+                  type={showPw ? 'text' : 'password'}
+                  required
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="••••••••••••"
+                  className="w-full h-12 px-4 rounded-2xl bg-[#FFF8E9] border-2 border-[#27345C]/12 focus:border-[#8054D9] outline-none font-semibold"
+                />
+              </div>
+
+              <label className="flex items-start gap-2.5 p-3 rounded-2xl bg-[#FFF8E9] border border-[#27345C]/12 cursor-pointer text-xs text-[#27345C]/80">
+                <input
+                  type="checkbox"
+                  checked={termsAccepted}
+                  onChange={(e) => setTermsAccepted(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 accent-[#8054D9]"
+                />
+                <span>
+                  {language === 'ar'
+                    ? `أوافق على سياسة خصوصية الأطفال وشروط الاستخدام (${POLICY_VERSION})`
+                    : `I accept the Child Privacy Policy & Terms of Use (${POLICY_VERSION})`}
+                </span>
+              </label>
+            </>
+          )}
 
           <button
             type="submit"
-            className="w-full nono-btn-tactile h-13 rounded-2xl bg-[#8054D9] text-white font-extrabold text-base cursor-pointer"
+            disabled={submitting}
+            className="w-full nono-btn-tactile h-13 rounded-2xl bg-[#8054D9] text-white font-extrabold text-base cursor-pointer disabled:opacity-50"
           >
-            {language === 'ar' ? 'متابعة لإضافة ملف الطفل' : 'Continue to Create Child Profile'}
+            {submitting
+              ? language === 'ar'
+                ? 'جاري المعالجة...'
+                : 'Processing...'
+              : mode === 'register'
+                ? language === 'ar'
+                  ? 'إنشاء الحساب الآمن والمتابعة'
+                  : 'Create Secure Account & Continue'
+                : mode === 'login'
+                  ? language === 'ar'
+                    ? 'تسجيل الدخول الآمن'
+                    : 'Sign In Securely'
+                  : mode === 'forgot'
+                    ? language === 'ar'
+                      ? 'إرسال رابط الاستعادة'
+                      : 'Request Password Reset'
+                    : language === 'ar'
+                      ? 'تحديث كلمة المرور'
+                      : 'Update Password'}
           </button>
         </form>
 
-        <div className="mt-5 pt-4 border-t border-[#27345C]/10 flex items-center justify-between text-xs text-[#27345C]/70">
+        <div className="pt-3 border-t border-[#27345C]/10 flex flex-wrap items-center justify-between gap-2 text-xs text-[#27345C]/70">
           <button type="button" onClick={() => navigate('home')} className="underline cursor-pointer">
-            {language === 'ar' ? 'الدخول السريع بالحساب التجريبي' : 'Skip & Explore with Sample Family'}
+            {language === 'ar' ? 'المعاينة بالحساب التجريبي' : 'Explore with Sample Family'}
           </button>
-          <button type="button" onClick={() => navigate('splash')} className="cursor-pointer">
-            {language === 'ar' ? 'الرئيسية' : 'Back'}
-          </button>
+          {mode === 'login' ? (
+            <button
+              type="button"
+              onClick={() => {
+                setMode('forgot');
+                setErrorMsg('');
+              }}
+              className="flex items-center gap-1 text-[#8054D9] font-bold cursor-pointer"
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+              <span>{language === 'ar' ? 'نسيت كلمة المرور؟' : 'Forgot Password?'}</span>
+            </button>
+          ) : (
+            <button type="button" onClick={() => navigate('splash')} className="cursor-pointer">
+              {language === 'ar' ? 'الرئيسية' : 'Back'}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -383,6 +776,8 @@ export const CreateChildScreen: React.FC = () => {
   const [interests, setInterests] = useState<string[]>(['animals', 'space']);
   const [companionId, setCompanionId] = useState('nono');
   const [scarfColor, setScarfColor] = useState('#8054D9');
+  const [childError, setChildError] = useState('');
+  const [creating, setCreating] = useState(false);
 
   const interestOptions = [
     { id: 'animals', ar: 'الحيوانات 🦁', en: 'Animals 🦁' },
@@ -398,25 +793,52 @@ export const CreateChildScreen: React.FC = () => {
     setInterests((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
 
-  const handleCreate = (e: React.FormEvent) => {
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    soundEngine.playSuccess();
-    createChildProfile({
-      displayName: displayName.trim() || (childLang === 'ar' ? 'بطل نونو' : 'Little Explorer'),
+    setChildError('');
+    const check = validateChildProfileInput({
+      displayName,
       ageGroup,
       language: childLang,
       birthYear,
       birthMonth,
-      interests,
-      companionId,
-      companionScarfColor: scarfColor,
     });
-    navigate('child-welcome');
+    if (!check.ok || !check.clean) {
+      setChildError(check.error || 'Invalid child details');
+      soundEngine.playEncourage();
+      return;
+    }
+
+    setCreating(true);
+    try {
+      await createChildProfile({
+        displayName: check.clean.displayName,
+        ageGroup,
+        language: childLang,
+        birthYear,
+        birthMonth,
+        interests,
+        companionId,
+        companionScarfColor: scarfColor,
+      });
+      soundEngine.playSuccess();
+      navigate('child-welcome');
+    } catch (err) {
+      setChildError(err instanceof Error ? err.message : 'Unable to create profile');
+      soundEngine.playEncourage();
+    } finally {
+      setCreating(false);
+    }
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#E5F6FF] to-[#FFF8E9] py-8 px-4">
       <div className="max-w-3xl mx-auto nono-card rounded-3xl p-6 sm:p-8">
+        {childError && (
+          <div className="mb-4 p-3 rounded-2xl bg-[#FF4D6D]/12 text-xs font-bold text-[#FF4D6D]">
+            {childError}
+          </div>
+        )}
         <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
           <div>
             <h2 className="text-2xl sm:text-3xl font-extrabold text-[#27345C]">
@@ -431,7 +853,7 @@ export const CreateChildScreen: React.FC = () => {
           <NonoCharacter mood="waving" scarfColor={scarfColor} size="sm" interactive={false} />
         </div>
 
-        <form onSubmit={handleCreate} className="space-y-6">
+        <form onSubmit={(e) => void handleCreate(e)} className="space-y-6">
           {/* Name & Language */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -618,7 +1040,8 @@ export const CreateChildScreen: React.FC = () => {
             </button>
             <button
               type="submit"
-              className="nono-btn-tactile h-13 px-8 rounded-2xl bg-[#8054D9] text-white font-extrabold flex items-center gap-2 cursor-pointer"
+              disabled={creating}
+              className="nono-btn-tactile h-13 px-8 rounded-2xl bg-[#8054D9] text-white font-extrabold flex items-center gap-2 cursor-pointer disabled:opacity-50"
             >
               <Plus className="w-5 h-5" />
               <span>{language === 'ar' ? 'ابدأ رحلة الطفل!' : "Launch Child's World!"}</span>

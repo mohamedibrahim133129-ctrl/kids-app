@@ -41,7 +41,7 @@ interface ReviewRow {
 }
 
 export const ExamsScreen: React.FC = () => {
-  const { activeChild, language, recordExamCompletion, navigate } = useNonoLand();
+  const { activeChild, language, recordExamCompletion, navigate, authSession } = useNonoLand();
   const [examConfig, setExamConfig] = useState<ExamConfig>({
     examPriceEgp: 50,
     currency: 'EGP',
@@ -92,9 +92,12 @@ export const ExamsScreen: React.FC = () => {
     setLoadingExam(true);
     setExamError('');
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (authSession.csrfToken) headers['x-csrf-token'] = authSession.csrfToken;
       const res = await fetch('/api/exams/start', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers,
         body: JSON.stringify({
           childId: activeChild.id,
           childName: activeChild.displayName,
@@ -135,9 +138,12 @@ export const ExamsScreen: React.FC = () => {
     setPaymentProcessing(true);
     setExamError('');
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (authSession.csrfToken) headers['x-csrf-token'] = authSession.csrfToken;
       const createRes = await fetch('/api/payments/create-checkout', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers,
         body: JSON.stringify({
           childId: activeChild.id,
           subject,
@@ -151,7 +157,8 @@ export const ExamsScreen: React.FC = () => {
 
       const verifyRes = await fetch('/api/payments/verify', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers,
         body: JSON.stringify({ checkoutSessionId: checkout.checkoutSessionId }),
       });
       const verified = await verifyRes.json();
@@ -178,9 +185,12 @@ export const ExamsScreen: React.FC = () => {
     if (!attemptId) return;
     setLoadingExam(true);
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (authSession.csrfToken) headers['x-csrf-token'] = authSession.csrfToken;
       const res = await fetch('/api/exams/submit', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers,
         body: JSON.stringify({ attemptId, answers }),
       });
       const data = await res.json();
@@ -699,24 +709,54 @@ export const ExamsScreen: React.FC = () => {
                     ? 'عملية شراء الامتحان الرسمي مخصصة للأهل فقط.'
                     : 'Only parents or guardians may confirm an exam purchase.'}
                 </p>
-                <div className="p-3 rounded-2xl bg-[#FFF8E9] font-mono-num text-2xl font-extrabold">
-                  8 × 3 = ?
-                </div>
+                {!authSession.authenticated && (
+                  <div className="p-3 rounded-2xl bg-[#FFF8E9] font-mono-num text-2xl font-extrabold">
+                    8 × 3 = ?
+                  </div>
+                )}
                 <input
-                  type="number"
+                  type={authSession.authenticated ? 'password' : 'number'}
                   value={gateInput}
                   onChange={(e) => setGateInput(e.target.value)}
-                  placeholder={language === 'ar' ? 'أدخل الناتج' : 'Enter answer'}
+                  placeholder={
+                    authSession.authenticated
+                      ? language === 'ar'
+                        ? 'كلمة مرور ولي الأمر'
+                        : 'Parent Password'
+                      : language === 'ar'
+                        ? 'أدخل الناتج'
+                        : 'Enter answer'
+                  }
                   className="w-full h-11 px-4 rounded-xl border-2 border-[#27345C]/15 text-center font-mono-num font-bold"
                 />
                 {gateError && (
                   <p className="text-xs font-bold text-[#FF4D6D]">
-                    {language === 'ar' ? 'إجابة غير صحيحة، حاول ثانية!' : 'Try again!'}
+                    {language === 'ar' ? 'إجابة أو كلمة مرور غير صحيحة، حاول ثانية!' : 'Incorrect verification, try again!'}
                   </p>
                 )}
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={async () => {
+                    if (authSession.authenticated && authSession.csrfToken) {
+                      const res = await fetch('/api/parent/verify-password', {
+                        method: 'POST',
+                        credentials: 'include',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          'x-csrf-token': authSession.csrfToken,
+                        },
+                        body: JSON.stringify({ password: gateInput }),
+                      });
+                      if (res.ok) {
+                        soundEngine.playSuccess();
+                        setGateUnlocked(true);
+                        setGateError(false);
+                        return;
+                      }
+                      soundEngine.playEncourage();
+                      setGateError(true);
+                      return;
+                    }
                     if (Number(gateInput.trim()) === 24) {
                       soundEngine.playSuccess();
                       setGateUnlocked(true);
